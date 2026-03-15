@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "StockItem" ADD COLUMN     "unitCost" DOUBLE PRECISION NOT NULL DEFAULT 0;
