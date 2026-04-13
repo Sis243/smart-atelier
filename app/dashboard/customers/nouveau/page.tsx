@@ -26,6 +26,7 @@ export default function NewCustomerPage() {
     try {
       const res = await fetch("/api/customers", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -61,7 +62,7 @@ export default function NewCustomerPage() {
             <label className="text-sm">Nom complet *</label>
             <input
               name="fullName"
-              placeholder="Ex : Jean Mukendi"
+              placeholder="Ex : Flory Bokako"
               className="mt-1 w-full rounded-xl bg-zinc-950/40 p-3 ring-1 ring-white/10"
               required
             />

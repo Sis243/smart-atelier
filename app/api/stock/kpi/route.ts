@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRoles } from "@/lib/authz";
 
 export async function GET() {
-  const guard = await requireRoles(["SUPERADMIN", "ADMIN", "MANAGER", "LOGISTIQUE", "CAISSIER"]);
-  if (!guard.ok) return guard.response;
 
   const items = await prisma.stockItem.findMany({
     select: {

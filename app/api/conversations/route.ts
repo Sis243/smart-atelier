@@ -1,64 +1,88 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireUser, requirePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { requirePermission, requireUser } from "@/lib/guards";
 
-export async function GET(req: NextRequest) {
+export async function GET(_: NextRequest) {
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
+
+  const permGuard = await requirePermission("chat.view");
+  if (!permGuard.ok) return permGuard.response;
+
   try {
-    const user = await requireUser(req);
-    await requirePermission(user.id, "CHAT_VIEW");
+    const userId = authGuard.auth.userId;
 
     const convs = await prisma.conversation.findMany({
-      where: { members: { some: { userId: user.id } } },
-      include: {
-        members: { include: { user: true } },
+      where: {
+        members: {
+          some: { userId },
+        },
       },
-      orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+      include: {
+        members: {
+          include: {
+            user: true,
+          },
+        },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }],
     });
 
-    return NextResponse.json(convs);
+    return NextResponse.json({ ok: true, conversations: convs });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur chargement conversations" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
+
+  const permGuard = await requirePermission("chat.send");
+  if (!permGuard.ok) return permGuard.response;
+
   try {
-    const user = await requireUser(req);
-    await requirePermission(user.id, "CHAT_MANAGE_GROUPS");
-
+    const userId = authGuard.auth.userId;
     const body = await req.json();
-    const type = body?.type === "GROUP" ? "GROUP" : "DIRECT";
-    const title = typeof body?.title === "string" ? body.title : null;
-    const memberIds: string[] = Array.isArray(body?.memberIds) ? body.memberIds : [];
 
-    if (type === "DIRECT" && memberIds.length !== 1) {
-      return NextResponse.json({ error: "DIRECT needs exactly 1 other memberId" }, { status: 400 });
-    }
-    if (type === "GROUP" && memberIds.length < 2) {
-      return NextResponse.json({ error: "GROUP needs at least 2 memberIds" }, { status: 400 });
-    }
+    const title = String(body?.title ?? "").trim() || null;
+    const type =
+      String(body?.type ?? "DIRECT").trim().toUpperCase() === "GROUP"
+        ? "GROUP"
+        : "DIRECT";
 
-    const conv = await prisma.conversation.create({
+    const memberIds = Array.isArray(body?.memberIds)
+      ? body.memberIds.map((x: unknown) => String(x)).filter(Boolean)
+      : [];
+
+    const uniqueMemberIds = Array.from(new Set([userId, ...memberIds]));
+
+    const created = await prisma.conversation.create({
       data: {
-        type,
         title,
-        createdById: user.id,
+        type: type as any,
+        createdById: userId,
         members: {
-          create: [
-            { userId: user.id, role: "ADMIN" },
-            ...memberIds.map((id) => ({ userId: id })),
-          ],
+          create: uniqueMemberIds.map((id) => ({ userId: id })),
         },
       },
-      include: { members: true },
+      select: {
+        id: true,
+      },
     });
 
-    return NextResponse.json(conv, { status: 201 });
+    return NextResponse.json({ ok: true, id: created.id });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Création conversation impossible" },
+      { status: 500 }
+    );
   }
 }

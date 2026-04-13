@@ -8,6 +8,7 @@ export default function DashboardTopActions() {
     <div className="flex flex-wrap items-center gap-2">
       <Link
         href="/dashboard/orders/nouvelle"
+        target="_self"
         className="rounded-xl bg-white/10 px-4 py-2 text-sm ring-1 ring-white/10 hover:bg-white/15"
       >
         + Nouvelle commande
@@ -15,6 +16,7 @@ export default function DashboardTopActions() {
 
       <Link
         href="/dashboard/orders"
+        target="_self"
         className="rounded-xl bg-amber-400/90 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
       >
         Voir les commandes

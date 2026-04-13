@@ -3,16 +3,103 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type CustomerLite = { id: string; fullName: string; phone: string | null };
+export type CustomerLite = {
+  id: string;
+  fullName: string;
+  phone: string | null;
+};
+
+export type StockPresetLite = {
+  id: string;
+  name: string;
+  category: string | null;
+  unit: string | null;
+};
+
+type FabricPresetOption = {
+  name: string;
+  category: string | null;
+};
+
+const ORDER_ITEM_TYPES = [
+  "Robe",
+  "Robe de soirée",
+  "Robe de mariée",
+  "Jupe",
+  "Chemise",
+  "Chemisier",
+  "Pantalon",
+  "Veste",
+  "Costume",
+  "Boubou",
+  "Abaya",
+  "Ensemble complet",
+  "Uniforme",
+  "Tenue enfant",
+  "Retouche",
+];
+
+const ORDER_CATEGORY_OPTIONS = [
+  "Femme",
+  "Homme",
+  "Enfant",
+  "Bébé",
+  "Mixte",
+  "Cérémonie",
+  "Mariage",
+  "Professionnel / Uniforme",
+  "Traditionnel",
+  "Décontracté",
+  "Retouche",
+];
+
+const FABRIC_PRESET_FALLBACKS: FabricPresetOption[] = [
+  { name: "Coton", category: "Tissu" },
+  { name: "Tissus coton", category: "Tissu" },
+  { name: "Tissus wax", category: "Tissu" },
+  { name: "Wax imprimé", category: "Tissu" },
+  { name: "Bazin riche", category: "Tissu" },
+  { name: "Lin", category: "Tissu" },
+  { name: "Jean (denim)", category: "Tissu" },
+  { name: "Coton simple", category: "Tissu" },
+  { name: "Satin", category: "Tissu" },
+  { name: "Soie", category: "Tissu" },
+];
+
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isFabricPreset(preset: StockPresetLite) {
+  const category = (preset.category ?? "").toLowerCase();
+  const unit = (preset.unit ?? "").toLowerCase();
+
+  return (
+    category.includes("tissu") ||
+    category.includes("mati") ||
+    unit === "m" ||
+    unit.includes("mètre") ||
+    unit.includes("metre") ||
+    unit.includes("yard")
+  );
+}
 
 type UploadedAttachment = {
   title?: string | null;
   fileName?: string | null;
-  type?: string | null; // "PDF" | "IMAGE" | "WORD" | "EXCEL" | "OTHER" (string côté front)
+  type?: string | null;
   url: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
 };
 
-function toNum(v: any, def = 0) {
+export interface NewOrderClientProps {
+  customers: CustomerLite[];
+  selectedCustomerId?: string;
+  stockPresets?: StockPresetLite[];
+}
+
+function toNum(v: unknown, def = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
 }
@@ -21,33 +108,28 @@ function calcTypeFromMime(mime: string, fileName: string) {
   const m = (mime || "").toLowerCase();
   const fn = (fileName || "").toLowerCase();
 
-  const isImage = m.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(fn);
-  if (isImage) return "IMAGE";
-
+  if (m.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(fn)) return "IMAGE";
   if (m === "application/pdf" || fn.endsWith(".pdf")) return "PDF";
-  if (
-    m.includes("word") ||
-    /\.(doc|docx)$/i.test(fn)
-  )
-    return "WORD";
-  if (
-    m.includes("excel") ||
-    m.includes("spreadsheet") ||
-    /\.(xls|xlsx|csv)$/i.test(fn)
-  )
-    return "EXCEL";
+  if (m.includes("word") || /\.(doc|docx)$/i.test(fn)) return "WORD";
+  if (m.includes("excel") || m.includes("spreadsheet") || /\.(xls|xlsx|csv)$/i.test(fn)) return "EXCEL";
 
   return "OTHER";
 }
 
-async function apiJson(url: string, method: "POST" | "PATCH", data: any) {
+async function apiJson(url: string, method: "POST" | "PATCH", data: unknown) {
   const res = await fetch(url, {
     method,
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+
   const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json?.ok) throw new Error(json?.error ?? `Erreur (${res.status})`);
+
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error ?? `Erreur (${res.status})`);
+  }
+
   return json;
 }
 
@@ -55,19 +137,39 @@ async function uploadFile(file: File) {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch("/api/uploads", { method: "POST", body: form });
+  const res = await fetch("/api/uploads", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Upload impossible");
-  return json as { ok: true; url: string; fileName: string; mimeType: string; fileSize: number };
+
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error ?? "Upload impossible");
+  }
+
+  return json as {
+    ok: true;
+    url: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  };
 }
 
-export default function NewOrderClient({ customers }: { customers: CustomerLite[] }) {
+export default function NewOrderClient({
+  customers,
+  selectedCustomerId,
+  stockPresets = [],
+}: NewOrderClientProps) {
   const router = useRouter();
+  const initialCustomerId =
+    customers.some((customer) => customer.id === selectedCustomerId)
+      ? selectedCustomerId ?? ""
+      : customers?.[0]?.id ?? "";
 
   const [busy, setBusy] = useState(false);
-
-  // champs
-  const [customerId, setCustomerId] = useState(customers?.[0]?.id ?? "");
+  const [customerId, setCustomerId] = useState(initialCustomerId);
   const [currency, setCurrency] = useState<"USD" | "CDF">("USD");
   const [fxRate, setFxRate] = useState("2900");
 
@@ -88,23 +190,54 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
   const [description, setDescription] = useState("");
   const [measurements, setMeasurements] = useState("");
 
-  // pièces jointes
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [attachTitle, setAttachTitle] = useState("");
   const [attachUrl, setAttachUrl] = useState("");
 
-  const canSubmit = useMemo(() => !busy && customerId, [busy, customerId]);
+  const canSubmit = useMemo(() => !busy && !!customerId, [busy, customerId]);
+  const fabricPresetOptions = useMemo<FabricPresetOption[]>(
+    () => [
+      ...FABRIC_PRESET_FALLBACKS,
+      ...stockPresets.filter(isFabricPreset).map((preset) => ({
+        name: preset.name,
+        category: preset.category,
+      })),
+    ],
+    [stockPresets]
+  );
+  const itemTypeOptions = useMemo(
+    () => Array.from(new Set(ORDER_ITEM_TYPES)).sort(),
+    []
+  );
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(ORDER_CATEGORY_OPTIONS)).sort(),
+    []
+  );
+  const fabricOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(fabricPresetOptions.map((preset) => preset.name).filter(isNonEmptyString))
+      ).sort(),
+    [fabricPresetOptions]
+  );
+
+  function applyPresetToOrder(presetName: string) {
+    setItemType(presetName);
+  }
 
   function addUrlAttachment() {
     const url = attachUrl.trim();
     if (!url) return alert("URL du fichier requis");
-    if (!/^https?:\/\//i.test(url)) return alert("L’URL doit commencer par http:// ou https://");
+    if (!/^https?:\/\//i.test(url)) return alert("L'URL doit commencer par http:// ou https://");
 
     const title = attachTitle.trim() || null;
     const fileName = url.split("?")[0].split("#")[0].split("/").pop() || "fichier";
     const type = calcTypeFromMime("", fileName);
 
-    setAttachments((prev) => [{ url, title, fileName, type }, ...prev]);
+    setAttachments((prev) => [
+      { url, title, fileName, type, mimeType: null, fileSize: null },
+      ...prev,
+    ]);
     setAttachTitle("");
     setAttachUrl("");
   }
@@ -121,11 +254,13 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
           title: null,
           fileName: up.fileName,
           type,
+          mimeType: up.mimeType,
+          fileSize: up.fileSize,
         },
         ...prev,
       ]);
     } catch (e: any) {
-      alert(e?.message ?? "Upload error");
+      alert(e?.message ?? "Upload impossible");
     } finally {
       setBusy(false);
     }
@@ -143,34 +278,27 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
         customerId,
         currency,
         fxRate: toNum(fxRate, 1),
-
         totalAmount: toNum(totalAmount, 0),
         depositAmount: toNum(depositAmount, 0),
         discount: toNum(discount, 0),
-
         isLot,
         lotLabel: lotLabel.trim() || null,
         lotQuantity: Math.max(1, Math.floor(toNum(lotQuantity, 1))),
-
         itemType: itemType.trim() || null,
         category: category.trim() || null,
         fabricType: fabricType.trim() || null,
         fabricColor: fabricColor.trim() || null,
         fabricMeters: fabricMeters.trim() ? toNum(fabricMeters, 0) : null,
-
         description: description.trim() || null,
         measurements: measurements.trim() || null,
-
-        // ✅ pièces jointes créées au moment de la commande
         attachments,
       };
 
       const created = await apiJson("/api/orders", "POST", payload);
-      // created: { ok: true, id, code }
       router.push(`/dashboard/orders/${created.id}`);
       router.refresh();
     } catch (e: any) {
-      alert(e?.message ?? "Erreur");
+      alert(e?.message ?? "Erreur création commande");
     } finally {
       setBusy(false);
     }
@@ -178,8 +306,7 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      {/* Colonne 1 */}
-      <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+      <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
         <div className="text-xs text-white/60">Client</div>
 
         <select
@@ -189,7 +316,7 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
         >
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.fullName} {c.phone ? `— ${c.phone}` : ""}
+              {c.fullName} {c.phone ? `- ${c.phone}` : ""}
             </option>
           ))}
         </select>
@@ -199,7 +326,7 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
             <div className="text-xs text-white/60">Devise</div>
             <select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as any)}
+              onChange={(e) => setCurrency(e.target.value as "USD" | "CDF")}
               className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
             >
               <option value="USD">USD</option>
@@ -208,7 +335,7 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
           </div>
 
           <div>
-            <div className="text-xs text-white/60">Taux USD→CDF</div>
+            <div className="text-xs text-white/60">Taux USD vers CDF</div>
             <input
               value={fxRate}
               onChange={(e) => setFxRate(e.target.value)}
@@ -219,221 +346,195 @@ export default function NewOrderClient({ customers }: { customers: CustomerLite[
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <div>
-            <div className="text-xs text-white/60">Total</div>
-            <input
-              value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-              className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <div className="text-xs text-white/60">Avance</div>
-            <input
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-              className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <div className="text-xs text-white/60">Remise</div>
-            <input
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-              placeholder="0"
-            />
-          </div>
+          <input
+            value={totalAmount}
+            onChange={(e) => setTotalAmount(e.target.value)}
+            placeholder="Total"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+          />
+          <input
+            value={depositAmount}
+            onChange={(e) => setDepositAmount(e.target.value)}
+            placeholder="Acompte"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+          />
+          <input
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+            placeholder="Remise"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+          />
         </div>
 
-        <div className="mt-4 rounded-xl bg-black/20 p-3 ring-1 ring-white/10">
-          <label className="flex items-center gap-2 text-sm text-white/80">
-            <input
-              type="checkbox"
-              checked={isLot}
-              onChange={(e) => setIsLot(e.target.checked)}
-            />
-            Commande par lot
-          </label>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setIsLot((v) => !v)}
+            className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white"
+          >
+            {isLot ? "Lot activé" : "Activer lot"}
+          </button>
+        </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
+        {isLot && (
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <input
               value={lotLabel}
               onChange={(e) => setLotLabel(e.target.value)}
-              disabled={!isLot}
-              placeholder="Libellé lot"
-              className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20 disabled:opacity-50"
+              placeholder="Libellé du lot"
+              className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
             />
             <input
               value={lotQuantity}
               onChange={(e) => setLotQuantity(e.target.value)}
-              disabled={!isLot}
-              placeholder="Quantité"
-              className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20 disabled:opacity-50"
+              placeholder="Quantité lot"
+              className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
             />
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Colonne 2 */}
-      <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
-        <div className="text-xs text-white/60">Article</div>
+      <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+        <div className="grid gap-2">
+          <div>
+            <div className="mb-1 text-xs text-white/60">Type article</div>
+            <input
+              list="order-item-types"
+              value={itemType}
+              onChange={(e) => applyPresetToOrder(e.target.value)}
+              placeholder="Choisir ou saisir un type"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+            />
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-white/60">Catégorie</div>
+            <input
+              list="order-categories"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Choisir ou saisir une catégorie"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+            />
+          </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <input
-            value={itemType}
-            onChange={(e) => setItemType(e.target.value)}
-            placeholder="Type article (ex: costume)"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-          />
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Catégorie (Homme/Femme/Enfant)"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-          />
-        </div>
+          <div>
+            <div className="mb-1 text-xs text-white/60">Tissu</div>
+            <input
+              list="fabric-preset-names"
+              value={fabricType}
+              onChange={(e) => setFabricType(e.target.value)}
+              placeholder="Choisir ou saisir un tissu"
+              className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
+            />
+          </div>
 
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <input
-            value={fabricType}
-            onChange={(e) => setFabricType(e.target.value)}
-            placeholder="Tissu"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
-          />
+          <datalist id="order-item-types">
+            {itemTypeOptions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <datalist id="order-categories">
+            {categoryOptions.map((orderCategory) => (
+              <option key={orderCategory} value={orderCategory} />
+            ))}
+          </datalist>
+          <datalist id="fabric-preset-names">
+            {fabricOptions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+
           <input
             value={fabricColor}
             onChange={(e) => setFabricColor(e.target.value)}
             placeholder="Couleur"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
-        </div>
-
-        <div className="mt-2">
           <input
             value={fabricMeters}
             onChange={(e) => setFabricMeters(e.target.value)}
-            placeholder="Métrage (ex: 3.5)"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none focus:ring-white/20"
+            placeholder="Métrage"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
-        </div>
-
-        <div className="mt-4">
-          <div className="text-xs text-white/60">Description</div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
-            className="mt-2 w-full rounded-xl bg-black/30 p-3 text-sm text-white/85 ring-1 ring-white/10 outline-none focus:ring-white/20"
-            placeholder="Détails: modèle, consignes, urgence…"
+            placeholder="Description"
+            className="rounded-xl bg-black/30 p-3 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
-        </div>
-
-        <div className="mt-4">
-          <div className="text-xs text-white/60">Mesures</div>
           <textarea
             value={measurements}
             onChange={(e) => setMeasurements(e.target.value)}
-            rows={6}
-            className="mt-2 w-full rounded-xl bg-black/30 p-3 text-sm text-white/85 ring-1 ring-white/10 outline-none focus:ring-white/20"
-            placeholder="Coller toutes les mesures ici…"
+            rows={5}
+            placeholder="Mesures"
+            className="rounded-xl bg-black/30 p-3 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
         </div>
       </div>
 
-      {/* Colonne 3 */}
-      <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-4">
+      <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
         <div className="text-xs text-white/60">Pièces jointes</div>
-        <div className="mt-1 text-sm text-white/80">
-          Ajoute dès maintenant : <b>PDF</b>, <b>JPG</b>, <b>PNG</b>, <b>WORD</b>, <b>EXCEL</b>.
-        </div>
 
-        {/* upload file */}
-        <label className="mt-3 block rounded-xl bg-white/10 px-3 py-2 text-sm text-white/85 ring-1 ring-white/10 hover:bg-white/15 cursor-pointer">
-          + Importer un fichier (PDF / IMAGE / WORD / EXCEL)
-          <input
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) addFileAttachment(f);
-              e.currentTarget.value = "";
-            }}
-          />
-        </label>
-
-        {/* url */}
-        <div className="mt-3 rounded-xl bg-black/20 p-3 ring-1 ring-white/10">
-          <div className="text-xs text-white/60">Ou ajouter un lien (URL)</div>
+        <div className="mt-3 grid gap-2">
           <input
             value={attachTitle}
             onChange={(e) => setAttachTitle(e.target.value)}
-            className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/85 ring-1 ring-white/10 outline-none focus:ring-white/20"
-            placeholder="Titre (optionnel)"
+            placeholder="Titre du fichier"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
           <input
             value={attachUrl}
             onChange={(e) => setAttachUrl(e.target.value)}
-            className="mt-2 w-full rounded-xl bg-black/30 px-3 py-2 text-sm text-white/85 ring-1 ring-white/10 outline-none focus:ring-white/20"
-            placeholder="https://..."
+            placeholder="URL du fichier"
+            className="rounded-xl bg-black/30 px-3 py-2 text-sm text-white/90 ring-1 ring-white/10 outline-none"
           />
           <button
             type="button"
-            disabled={busy}
             onClick={addUrlAttachment}
-            className="mt-2 w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15 ring-1 ring-white/10 disabled:opacity-60"
+            className="rounded-xl bg-white/10 px-3 py-2 text-sm text-white"
           >
-            + Ajouter URL
+            Ajouter URL
+          </button>
+
+          <input
+            type="file"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void addFileAttachment(file);
+            }}
+            className="text-sm text-white"
+          />
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {attachments.map((a, idx) => (
+            <div
+              key={`${a.url}-${idx}`}
+              className="flex items-center justify-between rounded-xl bg-black/20 px-3 py-2 text-sm text-white/90"
+            >
+              <div className="truncate">{a.fileName || a.title || a.url}</div>
+              <button
+                type="button"
+                onClick={() => removeAttachment(idx)}
+                className="ml-3 text-red-300"
+              >
+                Supprimer
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex gap-2">
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={() => void submit()}
+            className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-black disabled:opacity-50"
+          >
+            {busy ? "Enregistrement..." : "Créer la commande"}
           </button>
         </div>
-
-        {/* list */}
-        <div className="mt-3 space-y-2">
-          {attachments.length === 0 ? (
-            <div className="text-sm text-zinc-300/70">Aucun fichier ajouté.</div>
-          ) : (
-            attachments.map((a, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-2 rounded-xl bg-white/10 px-3 py-2 ring-1 ring-white/10"
-              >
-                <a
-                  href={a.url}
-                  target="_blank"
-                  className="min-w-0 flex-1 truncate text-sm text-white/85 hover:underline"
-                  title={a.fileName || a.title || a.url}
-                >
-                  {a.fileName || a.title || a.url}{" "}
-                  <span className="text-white/40">({a.type})</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(i)}
-                  className="rounded-lg bg-red-500/15 px-2 py-1 text-xs text-red-200 ring-1 ring-red-400/20 hover:bg-red-500/20"
-                >
-                  Retirer
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* submit */}
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={submit}
-          className="mt-4 w-full rounded-xl bg-amber-400/90 px-4 py-3 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-60"
-        >
-          {busy ? "Création…" : "Créer la commande →"}
-        </button>
-
-        <p className="mt-3 text-xs text-zinc-300/70">
-          La création génère automatiquement les étapes (Coupe/Production/Qualité/Livraison) et envoie la commande à la coupe.
-        </p>
       </div>
     </div>
   );

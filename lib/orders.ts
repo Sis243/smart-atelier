@@ -1,51 +1,40 @@
-import { prisma } from "@/lib/db";
-
-export function computeBalance(args: {
-  totalAmount: number;
-  discount: number;
-  depositAmount: number;
-}) {
-  const total = Number(args.totalAmount || 0);
-  const discount = Number(args.discount || 0);
-  const deposit = Number(args.depositAmount || 0);
-  const balance = total - discount - deposit;
-  return Number.isFinite(balance) ? Math.max(balance, 0) : 0;
-}
+// lib/orders.ts
+import { prisma } from "@/lib/prisma";
 
 export async function recalcOrderAmounts(orderId: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId } });
-  if (!order) return null;
-
-  const payments = await prisma.payment.aggregate({
-    where: { orderId },
-    _sum: { amount: true },
-  });
-
-  const depositAmount = Number(payments._sum.amount ?? 0);
-  const balanceAmount = computeBalance({
-    totalAmount: order.totalAmount,
-    discount: order.discount,
-    depositAmount,
-  });
-
-  return prisma.order.update({
+  const order = await prisma.order.findUnique({
     where: { id: orderId },
-    data: { depositAmount, balanceAmount },
-  });
-}
-
-export async function generateOrderCode() {
-  // format: SA-YYYYMMDD-XXXX
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const prefix = `SA-${y}${m}${d}`;
-
-  const countToday = await prisma.order.count({
-    where: { code: { startsWith: prefix } },
+    include: {
+      payments: true,
+    },
   });
 
-  const seq = String(countToday + 1).padStart(4, "0");
-  return `${prefix}-${seq}`;
+  if (!order) {
+    throw new Error("Commande introuvable");
+  }
+
+  const grossTotal = Number(order.totalAmount || 0);
+  const discount = Number(order.discount || 0);
+
+  const paid = order.payments.reduce((sum, p) => {
+    return sum + Number(p.amount || 0);
+  }, 0);
+
+  const netTotal = Math.max(0, grossTotal - discount);
+  const balanceAmount = Math.max(0, netTotal - paid);
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      depositAmount: paid,
+      balanceAmount,
+    },
+  });
+
+  return {
+    totalAmount: grossTotal,
+    discount,
+    paid,
+    balanceAmount,
+  };
 }

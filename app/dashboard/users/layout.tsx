@@ -1,31 +1,30 @@
 import { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { getUserWithPermissionsByEmail } from "@/lib/authz";
+import { hasPermission } from "@/lib/role-permissions";
 
-import { authOptions } from "@/lib/auth"; // <-- change ce chemin si chez toi c’est ailleurs
-import { getUserWithPermissionsByEmail, hasPermission } from "@/lib/authz";
+type Props = {
+  children: ReactNode;
+};
 
-export default async function UsersLayout({ children }: { children: ReactNode }) {
+export default async function UsersLayout({ children }: Props) {
   const session = await getServerSession(authOptions);
+  const email = String((session as any)?.user?.email ?? "").trim();
 
-  // pas connecté -> login
-  const email = session?.user?.email;
-  if (!email) redirect("/login");
+  if (!email) {
+    redirect("/login");
+  }
 
-  // user + permissions
   const u = await getUserWithPermissionsByEmail(email);
-  if (!u) redirect("/login");
 
-  // désactivé -> login
-  if (!u.isActive) redirect("/login");
+  if (!u || !u.isActive) {
+    redirect("/login");
+  }
 
-  // superadmin -> ok
-  const role = (u.role ?? "").toUpperCase();
-  if (role === "SUPERADMIN") return <>{children}</>;
-
-  // permission obligatoire
-  if (!hasPermission(u.permissions, "USERS_VIEW")) {
-    redirect("/dashboard"); // ou une page /403 si tu veux
+  if (!hasPermission(u.role, "users.view")) {
+    redirect("/dashboard");
   }
 
   return <>{children}</>;

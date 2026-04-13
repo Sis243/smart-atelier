@@ -254,11 +254,11 @@ export default function StockClient() {
   }
 
   function exportFile(format: "csv" | "excel") {
-    window.open(`/api/stock/export?format=${format}`, "_blank", "noopener,noreferrer");
+    window.location.assign(`/api/stock/export?format=${format}`);
   }
 
   function printMove(moveId: string) {
-    window.open(`/api/stock/moves/${moveId}/receipt`, "_blank", "noopener,noreferrer");
+    window.location.assign(`/api/stock/moves/${moveId}/receipt`);
   }
 
   return (

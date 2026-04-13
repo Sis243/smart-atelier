@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 
 function SafeImg({
@@ -40,9 +41,11 @@ function SafeImg({
   }
 
   return (
-    <img
+    <Image
       src={src}
       alt={alt}
+      fill
+      sizes="100vw"
       className={className}
       style={style}
       onError={() => setBroken(true)}

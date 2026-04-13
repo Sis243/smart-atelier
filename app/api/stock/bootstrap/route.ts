@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRoles } from "@/lib/authz";
 
 const INITIAL_PRESETS = [
   { name: "Wax imprimé", category: "Tissu", unit: "m", minQuantity: 20, unitCost: 5.5 },
@@ -20,8 +19,6 @@ const INITIAL_PRESETS = [
 ];
 
 export async function POST() {
-  const guard = await requireRoles(["SUPERADMIN", "ADMIN", "MANAGER"]);
-  if (!guard.ok) return guard.response;
 
   await prisma.$transaction(async (tx) => {
     for (const p of INITIAL_PRESETS) {

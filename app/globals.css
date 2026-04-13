@@ -14,3 +14,210 @@ body {
 body {
   margin: 0;
 }
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="light"] body {
+  background: #f7f7f8;
+}
+
+html[data-theme="light"] .bg-neutral-950,
+html[data-theme="light"] .bg-zinc-950 {
+  background-color: #f7f7f8 !important;
+}
+
+html[data-theme="light"] .bg-zinc-950\/40,
+html[data-theme="light"] .bg-zinc-950\/65,
+html[data-theme="light"] .bg-zinc-950\/80,
+html[data-theme="light"] .bg-zinc-900,
+html[data-theme="light"] .bg-black\/20,
+html[data-theme="light"] .bg-black\/30,
+html[data-theme="light"] .bg-white\/5,
+html[data-theme="light"] .bg-white\/8,
+html[data-theme="light"] .bg-white\/10,
+html[data-theme="light"] .bg-white\/15 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+html[data-theme="light"] .bg-white\/\[0\.03\],
+html[data-theme="light"] .bg-neutral-950\/70 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-zinc-50,
+html[data-theme="light"] .text-zinc-100,
+html[data-theme="light"] .text-zinc-200,
+html[data-theme="light"] .text-zinc-300,
+html[data-theme="light"] .text-zinc-200\/90,
+html[data-theme="light"] .text-white\/80,
+html[data-theme="light"] .text-white\/85,
+html[data-theme="light"] .text-white\/90,
+html[data-theme="light"] .text-white\/95 {
+  color: #171717 !important;
+}
+
+html[data-theme="light"] .text-zinc-400,
+html[data-theme="light"] .text-neutral-400,
+html[data-theme="light"] .text-white\/35,
+html[data-theme="light"] .text-white\/40,
+html[data-theme="light"] .text-white\/45,
+html[data-theme="light"] .text-white\/50,
+html[data-theme="light"] .text-white\/55,
+html[data-theme="light"] .text-white\/60,
+html[data-theme="light"] .text-white\/65,
+html[data-theme="light"] .text-white\/70,
+html[data-theme="light"] .text-white\/75,
+html[data-theme="light"] .text-zinc-300\/50,
+html[data-theme="light"] .text-zinc-300\/60,
+html[data-theme="light"] .text-zinc-300\/70,
+html[data-theme="light"] .text-zinc-300\/75,
+html[data-theme="light"] .text-zinc-300\/80 {
+  color: #525252 !important;
+}
+
+html[data-theme="light"] .ring-white\/10,
+html[data-theme="light"] .ring-white\/15,
+html[data-theme="light"] .ring-white\/20,
+html[data-theme="light"] .ring-white\/25,
+html[data-theme="light"] .border-white\/5,
+html[data-theme="light"] .border-white\/10,
+html[data-theme="light"] .border-white\/15,
+html[data-theme="light"] .border-t,
+html[data-theme="light"] .border-b {
+  --tw-ring-color: rgba(0, 0, 0, 0.12) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="light"] .hover\:bg-white\/5:hover,
+html[data-theme="light"] .hover\:bg-white\/10:hover,
+html[data-theme="light"] .hover\:bg-white\/15:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme="light"] .hover\:text-white:hover {
+  color: #171717 !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  color: #171717;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #737373;
+}
+
+html[data-theme="light"] option,
+html[data-theme="light"] .bg-zinc-950.text-white {
+  background-color: #ffffff !important;
+  color: #171717 !important;
+}
+
+html[data-theme="light"] .text-emerald-200,
+html[data-theme="light"] .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html[data-theme="light"] .text-green-200,
+html[data-theme="light"] .text-green-300 {
+  color: #166534 !important;
+}
+
+html[data-theme="light"] .text-teal-200,
+html[data-theme="light"] .text-teal-300 {
+  color: #0f766e !important;
+}
+
+html[data-theme="light"] .bg-emerald-500\/10,
+html[data-theme="light"] .bg-emerald-500\/15,
+html[data-theme="light"] .bg-emerald-500\/20 {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+html[data-theme="light"] .bg-green-500\/15,
+html[data-theme="light"] .bg-green-600\/20 {
+  background-color: rgba(34, 197, 94, 0.18) !important;
+}
+
+html[data-theme="light"] .ring-emerald-400\/15,
+html[data-theme="light"] .ring-emerald-400\/20,
+html[data-theme="light"] .border-emerald-500\/20 {
+  --tw-ring-color: rgba(4, 120, 87, 0.32) !important;
+  border-color: rgba(4, 120, 87, 0.32) !important;
+}
+
+html[data-theme="light"] .ring-green-400\/20 {
+  --tw-ring-color: rgba(22, 101, 52, 0.32) !important;
+}
+
+html[data-theme="light"] .text-red-100,
+html[data-theme="light"] .text-red-200,
+html[data-theme="light"] .text-red-300 {
+  color: #b91c1c !important;
+}
+
+html[data-theme="light"] .text-rose-200,
+html[data-theme="light"] .text-rose-300 {
+  color: #be123c !important;
+}
+
+html[data-theme="light"] .text-yellow-200,
+html[data-theme="light"] .text-yellow-300,
+html[data-theme="light"] .text-amber-200,
+html[data-theme="light"] .text-amber-300 {
+  color: #a16207 !important;
+}
+
+html[data-theme="light"] .bg-red-500\/10,
+html[data-theme="light"] .bg-red-500\/15,
+html[data-theme="light"] .bg-red-500\/20,
+html[data-theme="light"] .bg-red-600\/20,
+html[data-theme="light"] .bg-rose-500\/10,
+html[data-theme="light"] .bg-rose-500\/15 {
+  background-color: rgba(239, 68, 68, 0.14) !important;
+}
+
+html[data-theme="light"] .bg-yellow-500\/10,
+html[data-theme="light"] .bg-yellow-500\/15,
+html[data-theme="light"] .bg-amber-400\/10,
+html[data-theme="light"] .bg-amber-400\/15,
+html[data-theme="light"] .bg-amber-400\/20,
+html[data-theme="light"] .bg-amber-500\/15 {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+}
+
+html[data-theme="light"] .ring-red-400\/20,
+html[data-theme="light"] .ring-red-500\/20,
+html[data-theme="light"] .border-red-500\/20,
+html[data-theme="light"] .border-red-500\/30,
+html[data-theme="light"] .ring-rose-400\/20,
+html[data-theme="light"] .border-rose-500\/20 {
+  --tw-ring-color: rgba(185, 28, 28, 0.32) !important;
+  border-color: rgba(185, 28, 28, 0.32) !important;
+}
+
+html[data-theme="light"] .ring-yellow-400\/20,
+html[data-theme="light"] .ring-amber-300\/20,
+html[data-theme="light"] .ring-amber-300\/30,
+html[data-theme="light"] .ring-amber-300\/40,
+html[data-theme="light"] .ring-amber-400\/20,
+html[data-theme="light"] .border-amber-400\/30 {
+  --tw-ring-color: rgba(161, 98, 7, 0.34) !important;
+  border-color: rgba(161, 98, 7, 0.34) !important;
+}
+
+html[data-theme="atelier"] body {
+  background:
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.18), transparent 32rem),
+    linear-gradient(135deg, #08130f 0%, #121212 52%, #111827 100%);
+}
+
+html[data-theme="atelier"] .bg-neutral-950,
+html[data-theme="atelier"] .bg-zinc-950 {
+  background-color: transparent !important;
+}

@@ -2,8 +2,12 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/guards";
 
 export async function POST() {
+  const guard = await requireRole(["SUPERADMIN", "ADMIN"]);
+  if (!guard.ok) return guard.response;
+
   const now = new Date();
 
   const orders = await prisma.order.findMany({

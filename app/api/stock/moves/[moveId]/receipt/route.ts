@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireRoles } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
 
-export async function GET(_req: Request, { params }: { params: { moveId: string } }) {
-  const guard = await requireRoles(["SUPERADMIN", "ADMIN", "MANAGER", "LOGISTIQUE", "CAISSIER"]);
-  if (!guard.ok) return guard.response;
+export async function GET(
+  _req: Request,
+  { params }: { params: { moveId: string } }
+) {
 
   const move = await prisma.stockMove.findUnique({
     where: { id: params.moveId },
@@ -22,10 +22,16 @@ export async function GET(_req: Request, { params }: { params: { moveId: string 
     },
   });
 
-  if (!move) return new NextResponse("Bon introuvable", { status: 404 });
+  if (!move) {
+    return new NextResponse("Bon introuvable", { status: 404 });
+  }
 
   const typeLabel =
-    move.type === "IN" ? "BON D’ENTRÉE" : move.type === "OUT" ? "BON DE SORTIE" : "BON D’AJUSTEMENT";
+    move.type === "IN"
+      ? "BON D’ENTRÉE"
+      : move.type === "OUT"
+      ? "BON DE SORTIE"
+      : "BON D’AJUSTEMENT";
 
   const html = `<!doctype html>
 <html lang="fr"><head>
@@ -90,6 +96,9 @@ export async function GET(_req: Request, { params }: { params: { moveId: string 
 </body></html>`;
 
   return new NextResponse(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
 }

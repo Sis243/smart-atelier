@@ -162,7 +162,7 @@ export default function PaymentsPanel({ orderId, defaultCurrency }: PaymentsPane
 
   function openReceipt(paymentId: string) {
     const url = `/api/orders/${orderId}/payments/${paymentId}/receipt`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.location.assign(url);
   }
 
   return (

@@ -1,63 +1,25 @@
-import type { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
-import { prisma } from "@/lib/db";
+import "server-only";
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
-      name: "Connexion",
-      credentials: {
-        email: { label: "Email", type: "text", placeholder: "admin@mwinda.cd" },
-        password: { label: "Mot de passe", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = credentials?.email?.trim()?.toLowerCase();
-        const password = credentials?.password;
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { normalizeRole } from "@/lib/role-permissions";
 
-        if (!email || !password) return null;
+export { authOptions };
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) return null;
-        if (!user.isActive) return null;
+export async function getAuthSession() {
+  return getServerSession(authOptions);
+}
 
-        const ok = await compare(password, user.passwordHash);
-        if (!ok) return null;
+export async function getAuthUser() {
+  const session = await getServerSession(authOptions);
+  const user = (session as any)?.user ?? null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.fullName,
-          role: user.role,
-          isActive: user.isActive,
-        } as any;
-      },
-    }),
-  ],
-
-  session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
-  secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV !== "production",
-
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = (user as any).id;
-        token.role = (user as any).role;
-        token.isActive = (user as any).isActive;
-        token.name = (user as any).name;
-        token.email = (user as any).email;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      (session.user as any).id = token.id;
-      (session.user as any).role = token.role;
-      (session.user as any).isActive = token.isActive;
-      session.user.name = (token.name as string) ?? session.user.name;
-      session.user.email = (token.email as string) ?? session.user.email;
-      return session;
-    },
-  },
-};
+  return {
+    session,
+    user,
+    userId: String(user?.id ?? ""),
+    role: normalizeRole(user?.role),
+    name: String(user?.name ?? ""),
+    email: String(user?.email ?? ""),
+  };
+}

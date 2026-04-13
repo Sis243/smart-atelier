@@ -1,119 +1,76 @@
-import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
 import bcrypt from "bcryptjs";
+import { env } from "../lib/env";
 
-function createPrisma() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL manquant. Vérifie ton .env");
-  }
-
-  const pool = new Pool({ connectionString });
-  const adapter = new PrismaPg(pool);
-
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  });
-}
-
-const prisma = createPrisma();
-
-const PERMISSIONS: { key: string; label: string }[] = [
-  { key: "DASHBOARD_VIEW", label: "Voir le dashboard" },
-
-  { key: "USERS_VIEW", label: "Voir utilisateurs" },
-  { key: "USERS_EDIT", label: "Créer/modifier utilisateurs" },
-
-  { key: "CUSTOMERS_VIEW", label: "Voir clients" },
-  { key: "CUSTOMERS_CREATE", label: "Créer clients" },
-
-  { key: "ORDERS_VIEW", label: "Voir commandes" },
-  { key: "ORDERS_CREATE", label: "Créer commandes" },
-  { key: "ORDERS_UPDATE_STATUS", label: "Changer statut commande" },
-
-  { key: "CUT_VIEW", label: "Voir module Coupe" },
-  { key: "CUT_UPDATE", label: "Mettre à jour Coupe" },
-
-  { key: "PRODUCTION_VIEW", label: "Voir module Production" },
-  { key: "PRODUCTION_UPDATE", label: "Mettre à jour Production" },
-
-  { key: "QUALITY_VIEW", label: "Voir module Qualité" },
-  { key: "QUALITY_VALIDATE", label: "Valider/Rejeter Qualité" },
-
-  { key: "DELIVERY_VIEW", label: "Voir module Livraison" },
-  { key: "DELIVERY_CONFIRM", label: "Confirmer livraison" },
-
-  { key: "STOCK_VIEW", label: "Voir stock" },
-  { key: "STOCK_EDIT", label: "Modifier stock" },
-
-  { key: "ACTIVITY_VIEW", label: "Voir journal activité" },
-
-  { key: "ACCOUNTING_VIEW", label: "Voir comptabilité" },
-  { key: "ACCOUNTING_CASH_IN", label: "Encaissements" },
-  { key: "ACCOUNTING_CASH_OUT", label: "Décaissements" },
-  { key: "ACCOUNTING_INVOICE_CREATE", label: "Créer factures" },
-  { key: "ACCOUNTING_REPORTS_VIEW", label: "Voir rapports" },
-
-  { key: "HR_VIEW", label: "Voir RH" },
-  { key: "HR_EDIT", label: "Modifier RH" },
-  { key: "HR_ATTENDANCE_MANAGE", label: "Gérer présences" },
-  { key: "HR_LEAVE_MANAGE", label: "Gérer congés" },
-  { key: "HR_PAYROLL_MANAGE", label: "Gérer paie" },
-
-  { key: "CHAT_VIEW", label: "Voir messagerie" },
-  { key: "CHAT_SEND", label: "Envoyer messages" },
-  { key: "CHAT_MANAGE_GROUPS", label: "Gérer groupes" },
-
-  { key: "PRESENCE_VIEW", label: "Voir présence" },
-
-  { key: "NOTIFICATIONS_VIEW", label: "Voir notifications" },
-  { key: "NOTIFICATIONS_MANAGE", label: "Gérer notifications" },
-];
-
-const ACCOUNTS = [
-  { code: "5710", name: "Caisse", type: "CAISSE" },
-  { code: "5120", name: "Banque", type: "BANQUE" },
-  { code: "7010", name: "Ventes", type: "VENTE" },
-  { code: "6010", name: "Achats matières", type: "CHARGE" },
-  { code: "6410", name: "Salaires", type: "CHARGE" },
-  { code: "6580", name: "Frais divers", type: "CHARGE" },
-];
-
-const DEPARTMENTS = ["Coupe", "Production", "Qualité", "Livraison", "Caisse", "Admin"];
-const POSITIONS = [
-  "Chef atelier",
-  "Coupeur",
-  "Couturier",
-  "Contrôleur qualité",
-  "Livreur",
-  "Caissier",
-  "Admin",
-];
+const prisma = new PrismaClient();
 
 async function main() {
-  // Permissions
-  for (const p of PERMISSIONS) {
+  console.log("🌱 Seeding Smart Atelier...");
+
+  const passwordHash = await bcrypt.hash(env.SEED_ADMIN_PASSWORD, 10);
+
+  const permissions = [
+    { key: "USERS_MANAGE", label: "Gérer les utilisateurs" },
+    { key: "CUSTOMERS_MANAGE", label: "Gérer les clients" },
+    { key: "ORDERS_MANAGE", label: "Gérer les commandes" },
+    { key: "CUT_MANAGE", label: "Gérer la coupe" },
+    { key: "PRODUCTION_MANAGE", label: "Gérer la production" },
+    { key: "QUALITY_MANAGE", label: "Gérer la qualité" },
+    { key: "DELIVERY_MANAGE", label: "Gérer la livraison" },
+    { key: "STOCK_MANAGE", label: "Gérer le stock" },
+    { key: "HR_MANAGE", label: "Gérer les RH" },
+    { key: "ACCOUNTING_MANAGE", label: "Gérer la comptabilité" },
+    { key: "CHAT_USE", label: "Utiliser la messagerie" },
+    { key: "DASHBOARD_VIEW", label: "Voir le dashboard" },
+  ];
+
+  for (const permission of permissions) {
     await prisma.permission.upsert({
-      where: { key: p.key },
-      update: { label: p.label },
-      create: p,
+      where: { key: permission.key },
+      update: { label: permission.label },
+      create: permission,
     });
   }
 
-  // Comptes compta
-  for (const a of ACCOUNTS) {
-    await prisma.account.upsert({
-      where: { code: a.code },
-      update: { name: a.name, type: a.type as any },
-      create: a as any,
+  const admin = await prisma.user.upsert({
+    where: { email: env.SEED_ADMIN_EMAIL },
+    update: {
+      fullName: env.SEED_ADMIN_NAME,
+      passwordHash,
+      role: "SUPERADMIN",
+      isActive: true,
+    },
+    create: {
+      fullName: env.SEED_ADMIN_NAME,
+      email: env.SEED_ADMIN_EMAIL,
+      passwordHash,
+      role: "SUPERADMIN",
+      isActive: true,
+    },
+  });
+
+  const allPermissions = await prisma.permission.findMany({
+    select: { id: true },
+  });
+
+  for (const perm of allPermissions) {
+    await prisma.userPermission.upsert({
+      where: {
+        userId_permissionId: {
+          userId: admin.id,
+          permissionId: perm.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: admin.id,
+        permissionId: perm.id,
+      },
     });
   }
 
-  // RH: départements + postes
-  for (const name of DEPARTMENTS) {
+  const departments = ["Direction", "Coupe", "Production", "Qualité", "Livraison", "RH", "Comptabilité", "Stock"];
+  for (const name of departments) {
     await prisma.department.upsert({
       where: { name },
       update: {},
@@ -121,7 +78,19 @@ async function main() {
     });
   }
 
-  for (const name of POSITIONS) {
+  const positions = [
+    "Directeur",
+    "Chef d’atelier",
+    "Coupeur",
+    "Couturier",
+    "Contrôleur qualité",
+    "Livreur",
+    "RH",
+    "Comptable",
+    "Magasinier",
+  ];
+
+  for (const name of positions) {
     await prisma.position.upsert({
       where: { name },
       update: {},
@@ -129,49 +98,132 @@ async function main() {
     });
   }
 
-  // ✅ SUPERADMIN
-  const email = "admin@mwinda.cd";
-  const passwordHash = await bcrypt.hash("123456", 10);
+  const accountingAccounts = [
+    { code: "411", name: "Clients", type: "ACTIF" },
+    { code: "571", name: "Caisse", type: "TRESORERIE" },
+    { code: "601", name: "Achats stock", type: "CHARGE" },
+    { code: "701", name: "Ventes prestations", type: "PRODUIT" },
+    { code: "707", name: "Ventes marchandises", type: "PRODUIT" },
+    { code: "421", name: "Personnel rémunérations dues", type: "PASSIF" },
+    { code: "401", name: "Fournisseurs", type: "PASSIF" },
+    { code: "801", name: "Capital / fonds propres", type: "CAPITAL" },
+  ];
 
-  const admin = await prisma.user.upsert({
-    where: { email },
-    update: {
-      fullName: "SUPERADMIN",
-      role: "SUPERADMIN",
-      isActive: true,
-      passwordHash,
-    },
-    create: {
-      email,
-      fullName: "SUPERADMIN",
-      role: "SUPERADMIN",
-      isActive: true,
-      passwordHash,
-    },
-    select: { id: true, email: true },
-  });
-
-  // Assign all permissions to superadmin
-  const allPerms = await prisma.permission.findMany({ select: { id: true } });
-  for (const perm of allPerms) {
-    await prisma.userPermission.upsert({
-      where: {
-        userId_permissionId: { userId: admin.id, permissionId: perm.id },
+  for (const account of accountingAccounts) {
+    await prisma.account.upsert({
+      where: { code: account.code },
+      update: {
+        name: account.name,
+        type: account.type,
       },
-      update: {},
-      create: { userId: admin.id, permissionId: perm.id },
+      create: account,
     });
   }
 
-  // Presence init
-  await prisma.userPresence.upsert({
-    where: { userId: admin.id },
-    update: { status: "OFFLINE" as any },
-    create: { userId: admin.id, status: "OFFLINE" as any },
-  });
+  const suppliers = [
+    { name: "Tissus Congo", phone: "+243000000001", email: "contact@tissus-congo.cd", address: "Kinshasa" },
+    { name: "Accessoires Atelier", phone: "+243000000002", email: "contact@accessoires.cd", address: "Gombe" },
+  ];
 
-  console.log("✅ Seed done.");
-  console.log("SUPERADMIN:", email, "password: 123456");
+  for (const supplier of suppliers) {
+    await prisma.stockSupplier.upsert({
+      where: { name: supplier.name },
+      update: supplier,
+      create: supplier,
+    });
+  }
+
+  const stockItems = [
+    { name: "Tissu Bazin Bleu", category: "Tissu", unit: "mètre", quantity: 120, minQuantity: 20, unitCost: 8 },
+    { name: "Boutons noirs", category: "Accessoire", unit: "pièce", quantity: 500, minQuantity: 100, unitCost: 0.1 },
+    { name: "Fermetures éclairs", category: "Accessoire", unit: "pièce", quantity: 150, minQuantity: 30, unitCost: 0.8 },
+    { name: "Fil couture blanc", category: "Consommable", unit: "bobine", quantity: 80, minQuantity: 15, unitCost: 1.5 },
+  ];
+
+  for (const item of stockItems) {
+    await prisma.stockItem.upsert({
+      where: { id: `${item.name}` },
+      update: {},
+      create: item as any,
+    }).catch(async () => {
+      const existing = await prisma.stockItem.findFirst({ where: { name: item.name } });
+      if (!existing) {
+        await prisma.stockItem.create({ data: item });
+      }
+    });
+  }
+
+  const customers = [
+    { fullName: "Client Démo 1", type: "STANDARD", phone: "+243000000101", email: "client1@test.cd", address: "Kinshasa", note: "Client test" },
+    { fullName: "Client Démo 2", type: "VIP", phone: "+243000000102", email: "client2@test.cd", address: "Gombe", note: "Client prioritaire" },
+  ];
+
+  for (const customer of customers) {
+    const existing = await prisma.customer.findFirst({ where: { fullName: customer.fullName } });
+    if (!existing) {
+      await prisma.customer.create({ data: customer });
+    }
+  }
+
+  const employeeRows = [
+    { fullName: "Jean Coupe", email: "coupe@mwinda.cd", role: "COUPE", dept: "Coupe", pos: "Coupeur" },
+    { fullName: "Marie Production", email: "production@mwinda.cd", role: "PRODUCTION", dept: "Production", pos: "Couturier" },
+    { fullName: "Paul Qualité", email: "qualite@mwinda.cd", role: "QUALITE", dept: "Qualité", pos: "Contrôleur qualité" },
+    { fullName: "Ruth Livraison", email: "livraison@mwinda.cd", role: "LOGISTIQUE", dept: "Livraison", pos: "Livreur" },
+    { fullName: "Nadia RH", email: "rh@mwinda.cd", role: "RH", dept: "RH", pos: "RH" },
+    { fullName: "Eric Comptable", email: "compta@mwinda.cd", role: "COMPTABLE", dept: "Comptabilité", pos: "Comptable" },
+    { fullName: "Saïd Stock", email: "stock@mwinda.cd", role: "ADMIN", dept: "Stock", pos: "Magasinier" },
+  ];
+
+  for (const row of employeeRows) {
+    const userPassword = await bcrypt.hash("12345678", 10);
+
+    const user = await prisma.user.upsert({
+      where: { email: row.email },
+      update: {
+        fullName: row.fullName,
+        passwordHash: userPassword,
+        role: row.role as any,
+        isActive: true,
+      },
+      create: {
+        fullName: row.fullName,
+        email: row.email,
+        passwordHash: userPassword,
+        role: row.role as any,
+        isActive: true,
+      },
+    });
+
+    const department = await prisma.department.findUnique({ where: { name: row.dept } });
+    const position = await prisma.position.findUnique({ where: { name: row.pos } });
+
+    const existingEmployee = await prisma.employee.findFirst({
+      where: { userId: user.id },
+    });
+
+    if (!existingEmployee) {
+      await prisma.employee.create({
+        data: {
+          fullName: row.fullName,
+          email: row.email,
+          phone: null,
+          address: "Kinshasa",
+          status: "ACTIVE",
+          baseSalary: 300,
+          currency: "USD",
+          hireDate: new Date(),
+          departmentId: department?.id ?? null,
+          positionId: position?.id ?? null,
+          userId: user.id,
+        },
+      });
+    }
+  }
+
+  console.log("✅ Seed terminé.");
+  console.log(`Admin: ${env.SEED_ADMIN_EMAIL}`);
+  console.log(`Password: ${env.SEED_ADMIN_PASSWORD}`);
 }
 
 main()

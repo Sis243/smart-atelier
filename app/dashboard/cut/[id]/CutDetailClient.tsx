@@ -244,7 +244,6 @@ export default function CutDetailClient(props: {
               <a
                 key={f.id}
                 href={f.url}
-                target="_blank"
                 className="block rounded-xl bg-white/10 px-3 py-2 text-sm text-white/80 hover:bg-white/15 ring-1 ring-white/10"
               >
                 {f.fileName || f.title || "Fichier"} <span className="text-white/40">({f.type})</span>

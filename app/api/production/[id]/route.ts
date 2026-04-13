@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 type StepStatus = "EN_ATTENTE" | "EN_COURS" | "TERMINE" | "REJETE";
 
@@ -11,34 +11,63 @@ const ALLOWED: StepStatus[] = ["EN_ATTENTE", "EN_COURS", "TERMINE", "REJETE"];
 
 export async function PATCH(req: Request, ctx: { params: { id: string } }) {
   try {
-    const orderId = toStr(ctx.params.id);
-    if (!orderId) return NextResponse.json({ ok: false, error: "id requis" }, { status: 400 });
+    const productionStepId = toStr(ctx.params.id);
+    if (!productionStepId) {
+      return NextResponse.json(
+        { ok: false, error: "id requis" },
+        { status: 400 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const status = toStr(body.status) as StepStatus;
 
     if (!ALLOWED.includes(status)) {
-      return NextResponse.json({ ok: false, error: "Statut invalide" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Statut invalide" },
+        { status: 400 }
+      );
     }
 
-    // ✅ upsert productionStep (sécurise si jamais la relation manque)
-    const step = await prisma.productionStep.upsert({
-      where: { orderId },
-      create: { orderId, status: status as any },
-      update: { status: status as any },
+    const prismaAny = prisma as any;
+
+    const step = await prismaAny.productionStep.findUnique({
+      where: { id: productionStepId },
+      select: {
+        id: true,
+        orderId: true,
+      },
+    });
+
+    if (!step) {
+      return NextResponse.json(
+        { ok: false, error: "Étape production introuvable" },
+        { status: 404 }
+      );
+    }
+
+    const updated = await prismaAny.productionStep.update({
+      where: { id: productionStepId },
+      data: {
+        status,
+        startedAt: status === "EN_COURS" ? new Date() : undefined,
+        finishedAt: status === "TERMINE" ? new Date() : status === "REJETE" ? null : undefined,
+      },
       select: { id: true, status: true, orderId: true },
     });
 
-    // Optionnel: quand production commence, on met order.status = EN_COURS
     if (status === "EN_COURS") {
       await prisma.order.update({
-        where: { id: orderId },
+        where: { id: step.orderId },
         data: { status: "EN_COURS" as any },
       });
     }
 
-    return NextResponse.json({ ok: true, step });
+    return NextResponse.json({ ok: true, step: updated });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Erreur serveur" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur serveur" },
+      { status: 500 }
+    );
   }
 }

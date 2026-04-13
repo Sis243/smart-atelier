@@ -1,102 +1,110 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireUser, requirePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { requirePermission, requireUser } from "@/lib/guards";
 
 export async function GET(req: NextRequest) {
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
+
+  const permGuard = await requirePermission("chat.view");
+  if (!permGuard.ok) return permGuard.response;
+
   try {
-    const user = await requireUser(req);
-    await requirePermission(user.id, "CHAT_VIEW");
-
+    const userId = authGuard.auth.userId;
     const convId = req.nextUrl.searchParams.get("conversationId");
-    if (!convId) return NextResponse.json({ error: "conversationId required" }, { status: 400 });
 
-    // must be member
+    if (!convId) {
+      return NextResponse.json(
+        { ok: false, error: "conversationId requis" },
+        { status: 400 }
+      );
+    }
+
     const isMember = await prisma.conversationMember.findFirst({
-      where: { conversationId: convId, userId: user.id },
-    });
-    if (!isMember) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-
-    const msgs = await prisma.message.findMany({
-      where: { conversationId: convId },
-      include: { sender: true, receipts: true },
-      orderBy: { createdAt: "asc" },
-      take: 200,
+      where: {
+        conversationId: convId,
+        userId,
+      },
     });
 
-    return NextResponse.json(msgs);
+    if (!isMember) {
+      return NextResponse.json(
+        { ok: false, error: "Accès refusé à cette conversation" },
+        { status: 403 }
+      );
+    }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        conversationId: convId,
+      },
+      include: {
+        sender: true,
+        receipts: true,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    return NextResponse.json({ ok: true, messages });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur chargement messages" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
+
+  const permGuard = await requirePermission("chat.send");
+  if (!permGuard.ok) return permGuard.response;
+
   try {
-    const user = await requireUser(req);
-    await requirePermission(user.id, "CHAT_SEND");
-
+    const userId = authGuard.auth.userId;
     const body = await req.json();
-    const conversationId = body?.conversationId;
-    const text = typeof body?.text === "string" ? body.text : null;
 
-    if (!conversationId || (!text && !body?.fileUrl)) {
-      return NextResponse.json({ error: "conversationId + text/file required" }, { status: 400 });
+    const conversationId = String(body?.conversationId ?? "").trim();
+    const text = String(body?.text ?? "").trim();
+
+    if (!conversationId || !text) {
+      return NextResponse.json(
+        { ok: false, error: "conversationId et text requis" },
+        { status: 400 }
+      );
     }
 
-    const members = await prisma.conversationMember.findMany({
-      where: { conversationId },
-      select: { userId: true },
+    const isMember = await prisma.conversationMember.findFirst({
+      where: {
+        conversationId,
+        userId,
+      },
     });
 
-    const isMember = members.some((m) => m.userId === user.id);
-    if (!isMember) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    if (!isMember) {
+      return NextResponse.json(
+        { ok: false, error: "Accès refusé" },
+        { status: 403 }
+      );
+    }
 
-    const msg = await prisma.message.create({
+    const message = await prisma.message.create({
       data: {
         conversationId,
-        senderId: user.id,
-        type: body?.fileUrl ? "FILE" : "TEXT",
+        senderId: userId,
         text,
-        fileUrl: body?.fileUrl ?? null,
-        fileName: body?.fileName ?? null,
-        fileSize: body?.fileSize ?? null,
-        entity: body?.entity ?? null,
-        entityId: body?.entityId ?? null,
-        status: "SENT",
-        receipts: {
-          create: members
-            .filter((m) => m.userId !== user.id)
-            .map((m) => ({ userId: m.userId, deliveredAt: null, readAt: null })),
-        },
+        type: "TEXT",
       },
-      include: { sender: true, receipts: true },
     });
 
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { lastMessageAt: new Date() },
-    });
-
-    // Notification to other members
-    await prisma.notification.createMany({
-      data: members
-        .filter((m) => m.userId !== user.id)
-        .map((m) => ({
-          userId: m.userId,
-          type: "MESSAGE",
-          title: "Nouveau message",
-          body: text ?? "Fichier envoyé",
-          entity: "Conversation",
-          entityId: conversationId,
-          url: `/dashboard/messages?conversationId=${conversationId}`,
-        })),
-    });
-
-    return NextResponse.json(msg, { status: 201 });
+    return NextResponse.json({ ok: true, message });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Envoi message impossible" },
+      { status: 500 }
+    );
   }
 }

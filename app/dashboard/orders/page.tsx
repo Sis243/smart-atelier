@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 const LATE_DAYS = 7;
 
@@ -52,7 +52,9 @@ export default async function OrdersPage() {
         <div className="flex items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">Commandes</h1>
-            <p className="mt-1 text-sm text-zinc-300/80">Liste ERP (workflow compact + retard auto).</p>
+            <p className="mt-1 text-sm text-zinc-300/80">
+              Liste ERP (workflow compact + retard auto).
+            </p>
           </div>
 
           <Link
@@ -91,7 +93,10 @@ export default async function OrdersPage() {
                 return (
                   <tr key={o.id} className="hover:bg-white/5">
                     <td className="px-4 py-3">
-                      <Link href={`/dashboard/orders/${o.id}`} className="font-semibold text-amber-200 hover:underline">
+                      <Link
+                        href={`/dashboard/orders/${o.id}`}
+                        className="font-semibold text-amber-200 hover:underline"
+                      >
                         {o.code}
                       </Link>
                     </td>
@@ -128,18 +133,20 @@ export default async function OrdersPage() {
                     </td>
 
                     <td className="px-4 py-3">
-                      {o.currency} {o.totalAmount.toLocaleString("fr-FR")}
+                      {o.currency} {Number(o.totalAmount ?? 0).toLocaleString("fr-FR")}
                     </td>
 
                     <td className="px-4 py-3">
-                      {o.currency} {o.depositAmount.toLocaleString("fr-FR")}
+                      {o.currency} {Number(o.depositAmount ?? 0).toLocaleString("fr-FR")}
                     </td>
 
                     <td className="px-4 py-3">
-                      {o.currency} {o.balanceAmount.toLocaleString("fr-FR")}
+                      {o.currency} {Number(o.balanceAmount ?? 0).toLocaleString("fr-FR")}
                     </td>
 
-                    <td className="px-4 py-3 text-zinc-300/80">{new Date(o.createdAt).toLocaleString("fr-FR")}</td>
+                    <td className="px-4 py-3 text-zinc-300/80">
+                      {new Date(o.createdAt).toLocaleString("fr-FR")}
+                    </td>
                   </tr>
                 );
               })}

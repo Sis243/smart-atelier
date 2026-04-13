@@ -1,34 +1,57 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireRoles } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+
+function toStr(v: unknown) {
+  return String(v ?? "").trim();
+}
 
 export async function GET() {
-  const suppliers = await prisma.stockSupplier.findMany({ orderBy: { name: "asc" } });
-  return NextResponse.json({ suppliers });
+
+  try {
+    const suppliers = await prisma.stockSupplier.findMany({
+      orderBy: { name: "asc" },
+    });
+
+    return NextResponse.json({ ok: true, suppliers });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur fournisseurs" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
-  const guard = await requireRoles(["SUPERADMIN", "ADMIN", "MANAGER", "LOGISTIQUE", "CAISSIER"]);
-  if (!guard.ok) return guard.response;
 
-  const body = await req.json().catch(() => ({}));
-  const name = String(body.name ?? "").trim();
-  if (!name) return NextResponse.json({ error: "Nom requis" }, { status: 400 });
+  try {
+    const body = await req.json();
 
-  const supplier = await prisma.stockSupplier.upsert({
-    where: { name },
-    update: {
-      phone: body.phone ? String(body.phone) : null,
-      email: body.email ? String(body.email) : null,
-      address: body.address ? String(body.address) : null,
-    },
-    create: {
-      name,
-      phone: body.phone ? String(body.phone) : null,
-      email: body.email ? String(body.email) : null,
-      address: body.address ? String(body.address) : null,
-    },
-  });
+    const name = toStr(body.name);
+    const phone = toStr(body.phone) || null;
+    const email = toStr(body.email) || null;
+    const address = toStr(body.address) || null;
 
-  return NextResponse.json({ ok: true, supplier });
+    if (!name) {
+      return NextResponse.json(
+        { ok: false, error: "Nom fournisseur requis" },
+        { status: 400 }
+      );
+    }
+
+    const supplier = await prisma.stockSupplier.create({
+      data: {
+        name,
+        phone,
+        email,
+        address,
+      },
+    });
+
+    return NextResponse.json({ ok: true, supplier });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Création fournisseur impossible" },
+      { status: 500 }
+    );
+  }
 }

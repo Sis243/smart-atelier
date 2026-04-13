@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
+import { OrderFileType } from "@prisma/client";
 
 function toStr(v: unknown) {
   return String(v ?? "").trim();
 }
+
 function toNum(v: unknown, def = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
@@ -21,30 +23,16 @@ function makeOrderCode() {
 type IncomingAttachment = {
   title?: string | null;
   fileName?: string | null;
-  type?: string | null; // "PDF" | "IMAGE" | "WORD" | "EXCEL" | "OTHER" etc
+  type?: string | null;
   url: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
 };
 
-function normalizeAttachmentType(t?: string | null) {
+function normalizeAttachmentType(t?: string | null): OrderFileType {
   const v = String(t ?? "").toUpperCase().trim();
-
-  // correspondance schema.prisma (OrderFileType)
-  const allowed = new Set([
-    "PDF",
-    "IMAGE",
-    "WORD",
-    "EXCEL",
-    "OTHER",
-    "AUTRE",
-    "BON_COMMANDE",
-    "MODELE",
-    "MESURES",
-  ]);
-
-  if (allowed.has(v)) return v;
-
-  // fallback intelligent
-  return "OTHER";
+  const values = Object.values(OrderFileType) as string[];
+  return values.includes(v) ? (v as OrderFileType) : OrderFileType.OTHER;
 }
 
 export async function POST(req: Request) {
@@ -53,26 +41,33 @@ export async function POST(req: Request) {
 
     const customerId = toStr(body.customerId);
     if (!customerId) {
-      return NextResponse.json({ ok: false, error: "customerId requis" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "customerId requis" },
+        { status: 400 }
+      );
     }
 
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
       select: { id: true },
     });
+
     if (!customer) {
-      return NextResponse.json({ ok: false, error: "Client introuvable" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "Client introuvable" },
+        { status: 404 }
+      );
     }
 
     const currency = toStr(body.currency) === "CDF" ? "CDF" : "USD";
     const fxRate = toNum(body.fxRate, 1);
 
-    const totalAmount = toNum(body.totalAmount, 0);
+    const grossTotal = toNum(body.totalAmount, 0);
     const discount = toNum(body.discount, 0);
     const depositAmount = toNum(body.depositAmount, 0);
 
-    const netTotal = Math.max(0, totalAmount - discount);
-    const balanceAmount = Math.max(0, netTotal - depositAmount);
+    const totalAmount = Math.max(0, grossTotal - discount);
+    const balanceAmount = Math.max(0, totalAmount - depositAmount);
 
     const isLot = Boolean(body.isLot);
     const lotLabel = toStr(body.lotLabel) || null;
@@ -85,14 +80,18 @@ export async function POST(req: Request) {
 
     const fabricMetersRaw = body.fabricMeters;
     const fabricMeters =
-      fabricMetersRaw === null || fabricMetersRaw === undefined || String(fabricMetersRaw).trim() === ""
+      fabricMetersRaw === null ||
+      fabricMetersRaw === undefined ||
+      String(fabricMetersRaw).trim() === ""
         ? null
         : toNum(fabricMetersRaw, 0);
 
     const description = toStr(body.description) || null;
     const measurements = toStr(body.measurements) || null;
 
-    const attachments: IncomingAttachment[] = Array.isArray(body.attachments) ? body.attachments : [];
+    const attachments: IncomingAttachment[] = Array.isArray(body.attachments)
+      ? body.attachments
+      : [];
 
     const created = await prisma.$transaction(async (tx) => {
       const now = new Date();
@@ -101,62 +100,79 @@ export async function POST(req: Request) {
         data: {
           code: makeOrderCode(),
           customerId,
-
           currency: currency as any,
           fxRate,
-
-          totalAmount: netTotal,
+          totalAmount,
           discount,
           depositAmount,
           balanceAmount,
-
           isLot,
           lotLabel,
           lotQuantity,
-
           itemType,
           category,
           fabricType,
           fabricColor,
           fabricMeters,
-
           description,
           measurements,
-
-          // ✅ envoi auto à la coupe
           sentToCuttingAt: now,
-
-          status: "EN_ATTENTE",
+          status: "EN_ATTENTE" as any,
         },
         select: { id: true, code: true },
       });
 
-      // ✅ workflow auto
-      await tx.cutStep.create({ data: { orderId: order.id, status: "EN_ATTENTE" as any } });
-      await tx.productionStep.create({ data: { orderId: order.id, status: "EN_ATTENTE" as any } });
-      await tx.qualityStep.create({ data: { orderId: order.id, status: "EN_ATTENTE" as any } });
-      await tx.deliveryStep.create({ data: { orderId: order.id, status: "EN_ATTENTE" as any } });
+      await tx.cutStep.create({
+        data: { orderId: order.id, status: "EN_ATTENTE" as any },
+      });
 
-      // ✅ attachments (optionnel)
-      if (attachments.length) {
+      await tx.productionStep.create({
+        data: { orderId: order.id, status: "EN_ATTENTE" as any },
+      });
+
+      await tx.qualityStep.create({
+        data: { orderId: order.id, status: "EN_ATTENTE" as any },
+      });
+
+      await tx.deliveryStep.create({
+        data: { orderId: order.id, status: "EN_ATTENTE" as any },
+      });
+
+      const validAttachments = attachments
+        .filter(
+          (a) =>
+            a?.url &&
+            (/^https?:\/\//i.test(String(a.url)) ||
+              String(a.url).startsWith("/uploads/"))
+        )
+        .map((a) => ({
+          orderId: order.id,
+          url: String(a.url),
+          title: a.title ?? null,
+          fileName: a.fileName ?? null,
+          type: normalizeAttachmentType(a.type),
+          mimeType: a.mimeType ?? null,
+          fileSize: a.fileSize != null ? Number(a.fileSize) : null,
+        }));
+
+      if (validAttachments.length > 0) {
         await tx.orderAttachment.createMany({
-          data: attachments
-            .filter((a) => a?.url && /^https?:\/\//i.test(a.url) || String(a.url).startsWith("/uploads/"))
-            .map((a) => ({
-              orderId: order.id,
-              url: String(a.url),
-              title: a.title ?? null,
-              fileName: a.fileName ?? null,
-              type: normalizeAttachmentType(a.type) as any,
-            })),
+          data: validAttachments,
         });
       }
 
       return order;
     });
 
-    return NextResponse.json({ ok: true, id: created.id, code: created.code });
+    return NextResponse.json({
+      ok: true,
+      id: created.id,
+      code: created.code,
+    });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Erreur serveur" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur serveur" },
+      { status: 500 }
+    );
   }
 }

@@ -113,7 +113,6 @@ enum NotificationType {
   SYSTEM
 }
 
-// ✅ REQUIS: fichiers commandes (PDF/JPG/PNG/Word/Excel/Autre)
 enum OrderFileType {
   PDF
   IMAGE
@@ -122,7 +121,37 @@ enum OrderFileType {
   OTHER
 }
 
-//// 2) USERS + PERMISSIONS + PRESENCE
+enum ProductionAssignmentStatus {
+  EN_ATTENTE
+  EN_COURS
+  TERMINE
+  BLOQUE
+  ANNULE
+}
+
+enum ProductionPriority {
+  BASSE
+  NORMALE
+  HAUTE
+  URGENTE
+}
+
+enum CutPriority {
+  BASSE
+  NORMALE
+  HAUTE
+  URGENTE
+}
+
+enum CutAssignmentStatus {
+  EN_ATTENTE
+  EN_COURS
+  TERMINE
+  BLOQUE
+  ANNULE
+}
+
+//// USERS + PERMISSIONS + PRESENCE
 
 model User {
   id           String   @id @default(cuid())
@@ -135,7 +164,6 @@ model User {
   permissions UserPermission[]
   activities  ActivityLog[]
 
-  // Workflow responsables (relations nommées)
   cutSteps        CutStep[]        @relation("CutStepResponsible")
   productionSteps ProductionStep[] @relation("ProductionStepResponsible")
   qualitySteps    QualityStep[]    @relation("QualityStepResponsible")
@@ -146,28 +174,24 @@ model User {
   createdExpenses Expense[]     @relation("ExpenseCreatedBy")
   createdLedger   LedgerEntry[] @relation("LedgerCreatedBy")
 
-  // Stock
   stockMovesCreated StockMove[] @relation("StockMoveCreatedBy")
 
-  // Leave
   leaveRequestsDecided LeaveRequest[] @relation("LeaveRequestDecidedBy")
 
   employee Employee?
   presence UserPresence?
 
-  // Chat
   conversationsCreated Conversation[]
   conversationMembers  ConversationMember[]
   messagesSent         Message[]
   messageReceipts      MessageReceipt[]
+  messageReactions     MessageReaction[]
+  typingIndicators     ConversationTyping[]
 
-  // Notifications
   notifications Notification[]
 
-  // ✅ Fichiers commandes (créés par user)
   orderAttachmentsCreated OrderAttachment[]
 
-  // ✅ Mesures (prises par user)
   measurementsTaken OrderMeasurements[] @relation("MeasurementsTakenBy")
 
   createdAt DateTime @default(now())
@@ -206,12 +230,12 @@ model UserPermission {
   @@unique([userId, permissionId])
 }
 
-//// 3) CUSTOMERS
+//// CUSTOMERS
 
 model Customer {
   id       String  @id @default(cuid())
   fullName String
-  type     String  @default("STANDARD") // VIP / STANDARD
+  type     String  @default("STANDARD")
   phone    String?
   email    String?
   address  String?
@@ -224,7 +248,7 @@ model Customer {
   updatedAt DateTime @updatedAt
 }
 
-//// 4) ORDERS + PAYMENTS
+//// ORDERS + PAYMENTS
 
 model Order {
   id     String      @id @default(cuid())
@@ -252,7 +276,6 @@ model Order {
   measurements String?
   scanUrl      String?
 
-  // ✅ workflow coupe atelier
   sentToCuttingAt   DateTime?
   cuttingReceivedAt DateTime?
 
@@ -269,7 +292,6 @@ model Order {
   ledgerEntries LedgerEntry[] @relation("OrderLedgerEntries")
   invoiceItems  InvoiceItem[] @relation("OrderInvoiceItems")
 
-  // ✅ fichiers + mesures structurées
   attachments       OrderAttachment[]
   coupeMeasurements OrderMeasurements?
 
@@ -289,19 +311,17 @@ model Payment {
   paidAt   DateTime      @default(now())
 
   createdById String?
-  createdBy   User? @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?   @relation("PaymentCreatedBy", fields: [createdById], references: [id])
 
   ledgerEntry LedgerEntry?
 
   createdAt DateTime @default(now())
 }
 
-//// ✅ FILES / ATTACHMENTS (PDF/IMAGE/WORD/EXCEL/OTHER)
-
 model OrderAttachment {
-  id       String        @id @default(cuid())
-  orderId  String
-  order    Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   title    String?
   fileName String?
@@ -311,34 +331,30 @@ model OrderAttachment {
   fileSize Int?
 
   createdById String?
-  createdBy   User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@index([orderId, createdAt])
 }
 
-//// ✅ MEASUREMENTS STRUCTURÉS
-
 model OrderMeasurements {
   id      String @id @default(cuid())
   orderId String @unique
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  // JSON texte pour rester flexible
   dataJson String @default("{}")
 
-  // "RECEPTION" ou "COUPE"
   takenByDept String?
 
   takenById String?
-  takenBy   User? @relation("MeasurementsTakenBy", fields: [takenById], references: [id], onDelete: SetNull)
+  takenBy   User?   @relation("MeasurementsTakenBy", fields: [takenById], references: [id], onDelete: SetNull)
 
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }
 
-//// 5-8) WORKFLOW
+//// WORKFLOW
 
 model CutStep {
   id      String @id @default(cuid())
@@ -348,15 +364,59 @@ model CutStep {
   status StepStatus @default(EN_ATTENTE)
 
   responsibleId String?
-  responsible   User? @relation("CutStepResponsible", fields: [responsibleId], references: [id])
+  responsible   User?   @relation("CutStepResponsible", fields: [responsibleId], references: [id])
 
   receivedAt DateTime?
   startedAt  DateTime?
   finishedAt DateTime?
-  note       String?
+
+  dueAt    DateTime?
+  priority CutPriority @default(NORMALE)
+
+  plannedQuantity   Int @default(0)
+  completedQuantity Int @default(0)
+
+  fabricChecked       Boolean @default(false)
+  patternReady        Boolean @default(false)
+  measurementsChecked Boolean @default(false)
+
+  note String?
+
+  assignments CutAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model CutAssignment {
+  id String @id @default(cuid())
+
+  cutStepId String
+  cutStep   CutStep @relation(fields: [cutStepId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  roleLabel String?
+
+  assignedQuantity  Int @default(0)
+  completedQuantity Int @default(0)
+
+  status   CutAssignmentStatus @default(EN_ATTENTE)
+  priority CutPriority         @default(NORMALE)
+
+  assignedAt DateTime  @default(now())
+  startAt    DateTime?
+  endAt      DateTime?
+  dueAt      DateTime?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cutStepId])
+  @@index([employeeId])
 }
 
 model ProductionStep {
@@ -367,14 +427,53 @@ model ProductionStep {
   status StepStatus @default(EN_ATTENTE)
 
   responsibleId String?
-  responsible   User? @relation("ProductionStepResponsible", fields: [responsibleId], references: [id])
+  responsible   User?   @relation("ProductionStepResponsible", fields: [responsibleId], references: [id])
 
   startedAt  DateTime?
   finishedAt DateTime?
-  note       String?
+  dueAt      DateTime?
+  priority   ProductionPriority @default(NORMALE)
+
+  plannedQuantity   Int @default(0)
+  completedQuantity Int @default(0)
+
+  note String?
+
+  assignments ProductionAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ProductionAssignment {
+  id String @id @default(cuid())
+
+  productionStepId String
+  productionStep   ProductionStep @relation(fields: [productionStepId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  roleLabel String?
+
+  assignedQuantity  Int @default(0)
+  completedQuantity Int @default(0)
+
+  status   ProductionAssignmentStatus @default(EN_ATTENTE)
+  priority ProductionPriority         @default(NORMALE)
+
+  assignedAt DateTime  @default(now())
+  startAt    DateTime?
+  endAt      DateTime?
+  dueAt      DateTime?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productionStepId])
+  @@index([employeeId])
 }
 
 model QualityStep {
@@ -385,7 +484,7 @@ model QualityStep {
   status StepStatus @default(EN_ATTENTE)
 
   responsibleId String?
-  responsible   User? @relation("QualityStepResponsible", fields: [responsibleId], references: [id])
+  responsible   User?   @relation("QualityStepResponsible", fields: [responsibleId], references: [id])
 
   checkedAt DateTime?
   note      String?
@@ -402,7 +501,7 @@ model DeliveryStep {
   status StepStatus @default(EN_ATTENTE)
 
   responsibleId String?
-  responsible   User? @relation("DeliveryStepResponsible", fields: [responsibleId], references: [id])
+  responsible   User?   @relation("DeliveryStepResponsible", fields: [responsibleId], references: [id])
 
   deliveredAt DateTime?
   note        String?
@@ -411,7 +510,7 @@ model DeliveryStep {
   updatedAt DateTime @updatedAt
 }
 
-//// 9) STOCK
+//// STOCK
 
 model StockItem {
   id       String  @id @default(cuid())
@@ -438,10 +537,10 @@ model StockMove {
   type     StockMoveType
   quantity Float
   note     String?
-  movedAt  DateTime @default(now())
+  movedAt  DateTime      @default(now())
 
   createdById String?
-  createdBy   User? @relation("StockMoveCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?   @relation("StockMoveCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
 }
@@ -459,8 +558,8 @@ model StockPreset {
 }
 
 model StockSupplier {
-  id      String @id @default(cuid())
-  name    String @unique
+  id      String  @id @default(cuid())
+  name    String  @unique
   phone   String?
   email   String?
   address String?
@@ -490,12 +589,12 @@ model StockPurchase {
   @@index([supplierId, purchasedAt])
 }
 
-//// 10) ACTIVITY LOG
+//// ACTIVITY LOG
 
 model ActivityLog {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   userId String?
-  user   User?  @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
 
   action   String
   entity   String?
@@ -505,7 +604,7 @@ model ActivityLog {
   createdAt DateTime @default(now())
 }
 
-//// 11) ACCOUNTING
+//// ACCOUNTING
 
 model Account {
   id   String @id @default(cuid())
@@ -532,7 +631,7 @@ model LedgerEntry {
   account   Account @relation(fields: [accountId], references: [id])
 
   orderId String?
-  order   Order? @relation("OrderLedgerEntries", fields: [orderId], references: [id])
+  order   Order?  @relation("OrderLedgerEntries", fields: [orderId], references: [id])
 
   paymentId String?  @unique
   payment   Payment? @relation(fields: [paymentId], references: [id])
@@ -544,7 +643,7 @@ model LedgerEntry {
   expense   Expense? @relation(fields: [expenseId], references: [id])
 
   createdById String?
-  createdBy   User? @relation("LedgerCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?   @relation("LedgerCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
 }
@@ -560,16 +659,16 @@ model Invoice {
   customer   Customer @relation(fields: [customerId], references: [id])
 
   items         InvoiceItem[]
-  totalAmount   Float @default(0)
-  paidAmount    Float @default(0)
-  balanceAmount Float @default(0)
+  totalAmount   Float         @default(0)
+  paidAmount    Float         @default(0)
+  balanceAmount Float         @default(0)
 
   issuedAt DateTime?
   dueAt    DateTime?
   note     String?
 
   createdById String?
-  createdBy   User? @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?   @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
 
   ledgerEntries LedgerEntry[]
 
@@ -583,18 +682,18 @@ model InvoiceItem {
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   label     String
-  quantity  Float @default(1)
-  unitPrice Float @default(0)
-  lineTotal Float @default(0)
+  quantity  Float  @default(1)
+  unitPrice Float  @default(0)
+  lineTotal Float  @default(0)
 
   orderId String?
-  order   Order? @relation("OrderInvoiceItems", fields: [orderId], references: [id])
+  order   Order?  @relation("OrderInvoiceItems", fields: [orderId], references: [id])
 
   createdAt DateTime @default(now())
 }
 
 model Supplier {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   name    String
   phone   String?
   email   String?
@@ -624,7 +723,7 @@ model Expense {
   documentUrl String?
 
   createdById String?
-  createdBy   User? @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?   @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
 
   ledgerEntries LedgerEntry[]
 
@@ -632,7 +731,7 @@ model Expense {
   updatedAt DateTime @updatedAt
 }
 
-//// 12) HR
+//// HR
 
 model Department {
   id        String     @id @default(cuid())
@@ -653,14 +752,14 @@ model Position {
 }
 
 model Employee {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   fullName String
   phone    String?
   email    String?
   address  String?
 
   hireDate DateTime?
-  status   String   @default("ACTIVE")
+  status   String    @default("ACTIVE")
 
   baseSalary Float    @default(0)
   currency   Currency @default(USD)
@@ -674,14 +773,17 @@ model Employee {
   position   Position? @relation(fields: [positionId], references: [id])
 
   userId String? @unique
-  user   User?  @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
 
-  attendances Attendance[]
-  leaves      LeaveRequest[]
-  payslips    Payslip[]
+  attendances           Attendance[]
+  leaves                LeaveRequest[]
+  payslips              Payslip[]
+  productionAssignments ProductionAssignment[]
+  cutAssignments        CutAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  photoUrl String?
 }
 
 model Attendance {
@@ -709,7 +811,7 @@ model LeaveRequest {
   status    LeaveStatus @default(EN_ATTENTE)
 
   decidedById String?
-  decidedBy   User? @relation("LeaveRequestDecidedBy", fields: [decidedById], references: [id])
+  decidedBy   User?   @relation("LeaveRequestDecidedBy", fields: [decidedById], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -743,21 +845,22 @@ model Payslip {
   generatedAt DateTime @default(now())
 }
 
-//// 13) INTERNAL CHAT
+//// INTERNAL CHAT
 
 model Conversation {
   id          String           @id @default(cuid())
   type        ConversationType @default(DIRECT)
   title       String?
   createdById String?
-  createdBy   User? @relation(fields: [createdById], references: [id])
+  createdBy   User?            @relation(fields: [createdById], references: [id])
 
   members  ConversationMember[]
   messages Message[]
+  typingIndicators ConversationTyping[]
 
   lastMessageAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model ConversationMember {
@@ -768,7 +871,7 @@ model ConversationMember {
   muted          Boolean @default(false)
 
   lastReadAt DateTime?
-  joinedAt   DateTime @default(now())
+  joinedAt   DateTime  @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -781,6 +884,7 @@ model Message {
   id             String      @id @default(cuid())
   conversationId String
   senderId       String
+  parentId       String?
   type           MessageType @default(TEXT)
 
   text     String?
@@ -795,10 +899,15 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
+  parent       Message?     @relation("MessageThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Message[]    @relation("MessageThread")
 
-  receipts MessageReceipt[]
+  receipts  MessageReceipt[]
+  reactions MessageReaction[]
 
   createdAt DateTime @default(now())
+
+  @@index([conversationId, parentId, createdAt])
 }
 
 model MessageReceipt {
@@ -816,7 +925,37 @@ model MessageReceipt {
   @@index([userId])
 }
 
-//// 14) NOTIFICATIONS
+model MessageReaction {
+  id        String @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@index([userId])
+}
+
+model ConversationTyping {
+  id             String @id @default(cuid())
+  conversationId String
+  userId         String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([conversationId, userId])
+  @@index([conversationId, updatedAt])
+  @@index([userId])
+}
+
+//// NOTIFICATIONS
 
 model Notification {
   id     String           @id @default(cuid())
@@ -831,7 +970,7 @@ model Notification {
   url      String?
 
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

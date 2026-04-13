@@ -1,47 +1,83 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireRoles } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+
+function toStr(v: unknown) {
+  return String(v ?? "").trim();
+}
+
+function toNum(v: unknown, def = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+}
 
 export async function GET() {
-  const items = await prisma.stockItem.findMany({
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      unit: true,
-      quantity: true,
-      minQuantity: true,
-      unitCost: true,
-      updatedAt: true,
-      createdAt: true,
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-  return NextResponse.json({ items });
+
+  try {
+    const items = await prisma.stockItem.findMany({
+      orderBy: [{ name: "asc" }],
+    });
+
+    return NextResponse.json({ ok: true, items });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur liste stock" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
-  const guard = await requireRoles(["SUPERADMIN", "ADMIN", "MANAGER", "LOGISTIQUE", "CAISSIER"]);
-  if (!guard.ok) return guard.response;
 
-  const body = await req.json().catch(() => ({}));
+  try {
+    const body = await req.json();
 
-  const name = String(body.name ?? "").trim();
-  const category = body.category ? String(body.category).trim() : null;
-  const unit = body.unit ? String(body.unit).trim() : null;
+    const name = toStr(body.name);
+    const category = toStr(body.category) || null;
+    const unit = toStr(body.unit) || null;
+    const quantity = Math.max(0, toNum(body.quantity, 0));
+    const minQuantity = Math.max(0, toNum(body.minQuantity, 0));
+    const unitCost = Math.max(0, toNum(body.unitCost, 0));
 
-  const quantity = Number(body.quantity ?? 0);
-  const minQuantity = Number(body.minQuantity ?? 0);
-  const unitCost = Number(body.unitCost ?? 0);
+    if (!name) {
+      return NextResponse.json(
+        { ok: false, error: "Nom article requis" },
+        { status: 400 }
+      );
+    }
 
-  if (!name) return NextResponse.json({ error: "Nom requis" }, { status: 400 });
-  if (!Number.isFinite(quantity) || quantity < 0) return NextResponse.json({ error: "Quantité invalide" }, { status: 400 });
-  if (!Number.isFinite(minQuantity) || minQuantity < 0) return NextResponse.json({ error: "Seuil min invalide" }, { status: 400 });
-  if (!Number.isFinite(unitCost) || unitCost < 0) return NextResponse.json({ error: "Coût unitaire invalide" }, { status: 400 });
+    const existing = await prisma.stockItem.findFirst({
+      where: {
+        name: {
+          equals: name,
+          mode: "insensitive",
+        },
+      },
+      select: { id: true },
+    });
 
-  const item = await prisma.stockItem.create({
-    data: { name, category, unit, quantity, minQuantity, unitCost },
-  });
+    if (existing) {
+      return NextResponse.json(
+        { ok: false, error: "Un article avec ce nom existe déjà" },
+        { status: 400 }
+      );
+    }
 
-  return NextResponse.json({ ok: true, item });
+    const item = await prisma.stockItem.create({
+      data: {
+        name,
+        category,
+        unit,
+        quantity,
+        minQuantity,
+        unitCost,
+      },
+    });
+
+    return NextResponse.json({ ok: true, item });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Création article impossible" },
+      { status: 500 }
+    );
+  }
 }

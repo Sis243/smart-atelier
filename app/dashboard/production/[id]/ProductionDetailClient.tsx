@@ -1,188 +1,366 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type StepStatus = "EN_ATTENTE" | "EN_COURS" | "TERMINE" | "REJETE";
-
-type Attachment = {
+type AssignmentRow = {
   id: string;
-  title: string;
-  fileName: string;
-  type: string; // string côté front
-  url: string;
-  createdAt: string;
+  employeeId: string;
+  employeeName: string;
+  quantityAssigned: number;
+  quantityDone: number;
+  status: string;
 };
 
-function badgeStep(status: string) {
-  const base = "px-2 py-1 text-[11px] rounded-full ring-1";
-  if (status === "EN_ATTENTE") return `${base} bg-yellow-500/15 text-yellow-200 ring-yellow-400/20`;
-  if (status === "EN_COURS") return `${base} bg-blue-500/15 text-blue-200 ring-blue-400/20`;
-  if (status === "TERMINE") return `${base} bg-green-500/15 text-green-200 ring-green-400/20`;
-  if (status === "REJETE") return `${base} bg-red-500/15 text-red-200 ring-red-400/20`;
-  return `${base} bg-zinc-500/15 text-zinc-200 ring-white/10`;
+type EmployeeItem = {
+  id: string;
+  fullName: string;
+};
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erreur inconnue";
 }
 
-export default function ProductionDetailClient(props: {
+export default function ProductionAssignClient({
+  productionStepId,
+  orderId,
+  isLot,
+  lotQuantity,
+  assignments,
+}: {
+  productionStepId: string;
   orderId: string;
-
-  initialStatus: StepStatus;
-  initialNote: string;
-
-  initialCutStatus: StepStatus;
-  initialCutNote: string;
-
-  initialReceptionMeasurements: string;
-  initialCoupeMeasurements: string;
-
-  attachments: Attachment[];
+  isLot: boolean;
+  lotQuantity: number;
+  assignments: AssignmentRow[];
 }) {
-  const [status, setStatus] = useState<StepStatus>(props.initialStatus);
-  const [note, setNote] = useState<string>(props.initialNote ?? "");
-  const [busy, setBusy] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeItem[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [quantityAssigned, setQuantityAssigned] = useState("1");
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [rows, setRows] = useState<AssignmentRow[]>(assignments);
 
-  const canSave = useMemo(() => !busy, [busy]);
+  useEffect(() => {
+    setRows(assignments);
+  }, [assignments]);
 
-  async function apiPatch(path: string, data: any) {
-    const res = await fetch(path, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadEmployees() {
+      try {
+        const res = await fetch("/api/production/employees", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!mounted || !data?.ok) return;
+        setEmployees(data.employees || []);
+        if (data.employees?.length) setEmployeeId(data.employees[0].id);
+      } catch {}
+    }
+
+    loadEmployees();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const targetTotal = isLot ? Math.max(1, Number(lotQuantity || 1)) : 1;
+
+  const assignedTotal = useMemo(() => {
+    return rows.reduce((sum, row) => sum + Number(row.quantityAssigned || 0), 0);
+  }, [rows]);
+
+  const doneTotal = useMemo(() => {
+    return rows.reduce((sum, row) => sum + Number(row.quantityDone || 0), 0);
+  }, [rows]);
+
+  const remaining = Math.max(0, targetTotal - assignedTotal);
+  const canClose = rows.length > 0 && doneTotal >= targetTotal;
+
+  async function reloadRows() {
+    const res = await fetch(`/api/production/${productionStepId}/assignments`, {
+      cache: "no-store",
+      credentials: "include",
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) throw new Error(json?.error ?? `Erreur (${res.status})`);
-    return json;
-  }
-
-  async function changeStatus(next: StepStatus) {
-    try {
-      setBusy(true);
-      await apiPatch(`/api/production/${props.orderId}/status`, { status: next });
-      setStatus(next);
-    } catch (e: any) {
-      alert(e?.message ?? "Erreur");
-    } finally {
-      setBusy(false);
+    const data = await res.json().catch(() => ({}));
+    if (data?.ok) {
+      setRows(data.rows || []);
     }
   }
 
-  async function saveNote() {
+  async function createAssignment(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    setLoading(true);
+
     try {
-      setBusy(true);
-      await apiPatch(`/api/production/${props.orderId}/note`, { note });
-      alert("Note production enregistrée ✅");
-    } catch (e: any) {
-      alert(e?.message ?? "Erreur");
+      const qty = Number(quantityAssigned || 0);
+
+      const res = await fetch(`/api/production/${productionStepId}/assignments`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          employeeId,
+          quantityAssigned: qty,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Affectation impossible");
+      }
+
+      setMsg("Affectation enregistrée.");
+      setQuantityAssigned("1");
+      await reloadRows();
+    } catch (error) {
+      setErr(errorMessage(error));
     } finally {
-      setBusy(false);
+      setLoading(false);
+    }
+  }
+
+  async function updateAssignment(
+    id: string,
+    patch: Partial<{ quantityDone: number; status: string }>
+  ) {
+    setErr(null);
+    setMsg(null);
+
+    try {
+      const res = await fetch(`/api/production/${productionStepId}/assignments/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Mise à jour impossible");
+      }
+
+      setMsg("Affectation mise à jour.");
+      await reloadRows();
+    } catch (error) {
+      setErr(errorMessage(error));
+    }
+  }
+
+  async function finishProduction() {
+    setErr(null);
+    setMsg(null);
+    setClosing(true);
+
+    try {
+      const res = await fetch(`/api/production/${productionStepId}/finish`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Clôture impossible");
+      }
+
+      setMsg("Production terminée et envoyée en qualité.");
+      await reloadRows();
+    } catch (error) {
+      setErr(errorMessage(error));
+    } finally {
+      setClosing(false);
     }
   }
 
   return (
-    <div className="mt-3">
-      {/* STATUT PRODUCTION */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          disabled={!canSave}
-          onClick={() => changeStatus("EN_ATTENTE")}
-          className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15 ring-1 ring-white/10 disabled:opacity-60"
-        >
-          EN_ATTENTE
-        </button>
-        <button
-          disabled={!canSave}
-          onClick={() => changeStatus("EN_COURS")}
-          className="rounded-xl bg-blue-400/90 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-blue-400 disabled:opacity-60"
-        >
-          EN_COURS
-        </button>
-        <button
-          disabled={!canSave}
-          onClick={() => changeStatus("TERMINE")}
-          className="rounded-xl bg-green-400/90 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-green-400 disabled:opacity-60"
-        >
-          TERMINE
-        </button>
-        <button
-          disabled={!canSave}
-          onClick={() => changeStatus("REJETE")}
-          className="rounded-xl bg-red-400/90 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-red-400 disabled:opacity-60"
-        >
-          REJETE
-        </button>
-
-        <span className={badgeStep(status)}>{status}</span>
-      </div>
-
-      {/* RAPPEL COUPE */}
-      <div className="mt-4 rounded-2xl bg-black/20 ring-1 ring-white/10 p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-white/60">Infos Coupe</div>
-          <span className={badgeStep(props.initialCutStatus)}>{props.initialCutStatus}</span>
+    <div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-xl bg-zinc-950/40 p-4 ring-1 ring-white/10">
+          <div className="text-xs text-zinc-400">Quantité totale</div>
+          <div className="mt-1 text-xl font-semibold">{targetTotal}</div>
         </div>
-
-        <div className="mt-2 text-xs text-white/60">Note Coupe</div>
-        <div className="mt-1 text-sm text-white/80 whitespace-pre-wrap">
-          {props.initialCutNote?.trim() ? props.initialCutNote : "—"}
+        <div className="rounded-xl bg-zinc-950/40 p-4 ring-1 ring-white/10">
+          <div className="text-xs text-zinc-400">Affecté</div>
+          <div className="mt-1 text-xl font-semibold">{assignedTotal}</div>
+        </div>
+        <div className="rounded-xl bg-zinc-950/40 p-4 ring-1 ring-white/10">
+          <div className="text-xs text-zinc-400">Reste à affecter</div>
+          <div className="mt-1 text-xl font-semibold">{remaining}</div>
+        </div>
+        <div className="rounded-xl bg-zinc-950/40 p-4 ring-1 ring-white/10">
+          <div className="text-xs text-zinc-400">Réalisé</div>
+          <div className="mt-1 text-xl font-semibold">{doneTotal}</div>
         </div>
       </div>
 
-      {/* MESURES RECEPTION */}
-      <div className="mt-4">
-        <div className="text-xs text-white/60">Mesures (réception) — lecture seule</div>
-        <pre className="mt-2 rounded-xl bg-black/30 p-3 text-[12px] text-white/80 ring-1 ring-white/10 overflow-auto whitespace-pre-wrap">
-          {props.initialReceptionMeasurements?.trim() ? props.initialReceptionMeasurements : "—"}
-        </pre>
-      </div>
+      {err && (
+        <div className="mt-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-400/20">
+          {err}
+        </div>
+      )}
 
-      {/* MESURES COUPE */}
-      <div className="mt-4">
-        <div className="text-xs text-white/60">Mesures Coupe — lecture seule</div>
-        <pre className="mt-2 rounded-xl bg-black/30 p-3 text-[12px] text-white/80 ring-1 ring-white/10 overflow-auto whitespace-pre-wrap">
-          {props.initialCoupeMeasurements?.trim() ? props.initialCoupeMeasurements : "—"}
-        </pre>
-      </div>
+      {msg && (
+        <div className="mt-4 rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-200 ring-1 ring-emerald-400/20">
+          {msg}
+        </div>
+      )}
 
-      {/* NOTE PRODUCTION */}
-      <div className="mt-4">
-        <div className="text-xs text-white/60">Note Production</div>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={4}
-          placeholder="Ex: montage en cours, retouche à prévoir..."
-          className="mt-2 w-full rounded-xl bg-black/30 p-3 text-sm text-white/85 ring-1 ring-white/10 outline-none focus:ring-white/20"
+      <form
+        onSubmit={createAssignment}
+        className="mt-4 grid grid-cols-1 gap-3 rounded-2xl bg-zinc-950/40 p-4 ring-1 ring-white/10 md:grid-cols-4"
+      >
+        <select
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+          className="rounded-xl bg-zinc-950/40 p-3 ring-1 ring-white/10"
+        >
+          <option value="">Choisir un couturier</option>
+          {employees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.fullName}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="number"
+          min={1}
+          max={remaining || targetTotal}
+          value={quantityAssigned}
+          onChange={(e) => setQuantityAssigned(e.target.value)}
+          className="rounded-xl bg-zinc-950/40 p-3 ring-1 ring-white/10"
+          placeholder="Quantité"
         />
-        <div className="mt-2">
-          <button
-            disabled={!canSave}
-            onClick={saveNote}
-            className="rounded-xl bg-amber-400/90 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-60"
-          >
-            Enregistrer la note
-          </button>
-        </div>
+
+        <button
+          type="button"
+          onClick={() => setQuantityAssigned(String(Math.max(1, remaining)))}
+          disabled={remaining <= 0}
+          className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Mettre le reste
+        </button>
+
+        <button
+          disabled={loading || !employeeId || remaining <= 0}
+          className="rounded-xl bg-amber-400/90 px-4 py-3 font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "..." : "Affecter"}
+        </button>
+      </form>
+
+      <div className="mt-4 overflow-hidden rounded-2xl bg-zinc-950/40 ring-1 ring-white/10">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="px-4 py-3">Couturier</th>
+              <th className="px-4 py-3">Attribué</th>
+              <th className="px-4 py-3">Réalisé</th>
+              <th className="px-4 py-3">Progression</th>
+              <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10">
+            {rows.map((row) => {
+              const percent =
+                row.quantityAssigned > 0
+                  ? Math.min(100, Math.round((row.quantityDone / row.quantityAssigned) * 100))
+                  : 0;
+
+              return (
+                <tr key={row.id}>
+                  <td className="px-4 py-3">{row.employeeName}</td>
+                  <td className="px-4 py-3">{row.quantityAssigned}</td>
+                  <td className="px-4 py-3">{row.quantityDone}</td>
+                  <td className="px-4 py-3">
+                    <div className="h-2 w-28 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full bg-emerald-400" style={{ width: `${percent}%` }} />
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-400">{percent}%</div>
+                  </td>
+                  <td className="px-4 py-3">{row.status}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateAssignment(row.id, {
+                            quantityDone: Math.min(row.quantityAssigned, row.quantityDone + 1),
+                            status:
+                              row.quantityDone + 1 >= row.quantityAssigned
+                                ? "TERMINE"
+                                : "EN_COURS",
+                          })
+                        }
+                        className="rounded-lg bg-white/10 px-3 py-1 text-xs text-white"
+                      >
+                        +1 réalisé
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => updateAssignment(row.id, { status: "EN_COURS" })}
+                        className="rounded-lg bg-cyan-500/20 px-3 py-1 text-xs text-cyan-200"
+                      >
+                        Débuter
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateAssignment(row.id, {
+                            quantityDone: row.quantityAssigned,
+                            status: "TERMINE",
+                          })
+                        }
+                        className="rounded-lg bg-green-600/20 px-3 py-1 text-xs text-green-200"
+                      >
+                        Terminer
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-zinc-400">
+                  Aucune affectation. Éclate la commande par couturier avant de clôturer.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* FICHIERS (lecture) */}
-      <div className="mt-4">
-        <div className="text-xs text-white/60">Fichiers joints</div>
-        <div className="mt-2 space-y-2">
-          {props.attachments?.length ? (
-            props.attachments.map((f) => (
-              <a
-                key={f.id}
-                href={f.url}
-                target="_blank"
-                className="block rounded-xl bg-white/10 px-3 py-2 text-sm text-white/80 hover:bg-white/15 ring-1 ring-white/10"
-              >
-                {f.fileName || f.title || "Fichier"}{" "}
-                <span className="text-white/40">({f.type})</span>
-              </a>
-            ))
-          ) : (
-            <div className="text-zinc-300/70 text-sm">—</div>
-          )}
-        </div>
+      <div className="mt-4 flex flex-col items-end gap-2">
+        {!canClose ? (
+          <div className="text-right text-xs text-zinc-400">
+            Pour clôturer: {doneTotal}/{targetTotal} pièce(s) réalisées.
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={finishProduction}
+          disabled={closing || !canClose}
+          className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {closing ? "Clôture..." : "Clôturer la production et envoyer en qualité"}
+        </button>
+      </div>
+
+      <div className="mt-4 rounded-xl bg-zinc-950/40 p-4 text-sm text-zinc-300 ring-1 ring-white/10">
+        Progression globale : <b>{doneTotal}</b> / <b>{targetTotal}</b>
       </div>
     </div>
   );

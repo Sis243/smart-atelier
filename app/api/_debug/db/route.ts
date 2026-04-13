@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/guards";
 
 export async function GET() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  }
+
+  const guard = await requireRole(["SUPERADMIN", "ADMIN"]);
+  if (!guard.ok) return guard.response;
+
   try {
     const url = process.env.DATABASE_URL || "";
     const safeUrl =

@@ -1,141 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireUser, requirePermission } from "@/lib/authz";
-
-type StepName = "CUT" | "PRODUCTION" | "QUALITY" | "DELIVERY";
-
-function nextStep(step: StepName): StepName | null {
-  if (step === "CUT") return "PRODUCTION";
-  if (step === "PRODUCTION") return "QUALITY";
-  if (step === "QUALITY") return "DELIVERY";
-  return null;
-}
+import { prisma } from "@/lib/prisma";
+import { requirePermission, requireUser } from "@/lib/guards";
 
 export async function PATCH(req: NextRequest) {
-  try {
-    const user = await requireUser(req);
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
 
+  const permGuard = await requirePermission("workflow.update");
+  if (!permGuard.ok) return permGuard.response;
+
+  try {
     const body = await req.json();
-    const orderId: string = body?.orderId;
-    const step: StepName = body?.step;
-    const status: string = body?.status; // StepStatus
-    const note: string | null = typeof body?.note === "string" ? body.note : null;
+
+    const orderId = String(body?.orderId ?? "").trim();
+    const step = String(body?.step ?? "").trim();
+    const status = String(body?.status ?? "").trim();
 
     if (!orderId || !step || !status) {
-      return NextResponse.json({ error: "orderId + step + status required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "orderId, step et status requis" },
+        { status: 400 }
+      );
     }
 
-    // permission mapping
-    const permMap: Record<StepName, string> = {
-      CUT: "CUT_UPDATE",
-      PRODUCTION: "PRODUCTION_UPDATE",
-      QUALITY: "QUALITY_VALIDATE",
-      DELIVERY: "DELIVERY_CONFIRM",
-    };
-    await requirePermission(user.id, permMap[step]);
+    let updated;
 
-    const now = new Date();
-
-    // Update the step
-    if (step === "CUT") {
-      await prisma.cutStep.upsert({
+    if (step === "COUPE") {
+      updated = await prisma.cutStep.update({
         where: { orderId },
-        update: {
+        data: {
           status: status as any,
-          note,
-          responsibleId: user.id,
-          startedAt: status === "EN_COURS" ? now : undefined,
-          finishedAt: status === "TERMINE" ? now : undefined,
+          updatedAt: new Date(),
         },
-        create: { orderId, status: status as any, note, responsibleId: user.id, startedAt: status === "EN_COURS" ? now : null, finishedAt: status === "TERMINE" ? now : null },
       });
-    }
-
-    if (step === "PRODUCTION") {
-      await prisma.productionStep.upsert({
+    } else if (step === "PRODUCTION") {
+      updated = await prisma.productionStep.update({
         where: { orderId },
-        update: {
+        data: {
           status: status as any,
-          note,
-          responsibleId: user.id,
-          startedAt: status === "EN_COURS" ? now : undefined,
-          finishedAt: status === "TERMINE" ? now : undefined,
+          updatedAt: new Date(),
         },
-        create: { orderId, status: status as any, note, responsibleId: user.id, startedAt: status === "EN_COURS" ? now : null, finishedAt: status === "TERMINE" ? now : null },
       });
-    }
-
-    if (step === "QUALITY") {
-      await prisma.qualityStep.upsert({
+    } else if (step === "QUALITE") {
+      updated = await prisma.qualityStep.update({
         where: { orderId },
-        update: {
+        data: {
           status: status as any,
-          note,
-          responsibleId: user.id,
-          checkedAt: now,
+          updatedAt: new Date(),
         },
-        create: { orderId, status: status as any, note, responsibleId: user.id, checkedAt: now },
       });
-    }
-
-    if (step === "DELIVERY") {
-      await prisma.deliveryStep.upsert({
+    } else if (step === "LIVRAISON") {
+      updated = await prisma.deliveryStep.update({
         where: { orderId },
-        update: {
+        data: {
           status: status as any,
-          note,
-          responsibleId: user.id,
-          deliveredAt: status === "TERMINE" ? now : undefined,
+          updatedAt: new Date(),
         },
-        create: { orderId, status: status as any, note, responsibleId: user.id, deliveredAt: status === "TERMINE" ? now : null },
       });
+    } else {
+      return NextResponse.json(
+        { ok: false, error: "Étape inconnue" },
+        { status: 400 }
+      );
     }
 
-    // Activity log
-    await prisma.activityLog.create({
-      data: {
-        userId: user.id,
-        action: "WORKFLOW_STEP_CHANGED",
-        entity: "Order",
-        entityId: orderId,
-        metaJson: JSON.stringify({ step, status, note }),
-      },
-    });
-
-    // Notify next step responsible role (simple strategy)
-    const n = nextStep(step);
-    if (n && status === "TERMINE") {
-      const roleMap: Record<StepName, any> = {
-        CUT: "COUPE",
-        PRODUCTION: "PRODUCTION",
-        QUALITY: "QUALITE",
-        DELIVERY: "LOGISTIQUE",
-      };
-      const targetRole = roleMap[n];
-      const targets = await prisma.user.findMany({
-        where: { role: targetRole, isActive: true },
-        select: { id: true },
-      });
-
-      if (targets.length) {
-        await prisma.notification.createMany({
-          data: targets.map((t) => ({
-            userId: t.id,
-            type: "WORKFLOW_STEP_CHANGED",
-            title: "Nouvelle commande à traiter",
-            body: `La commande ${orderId} est prête pour l'étape ${n}.`,
-            entity: "Order",
-            entityId: orderId,
-            url: `/dashboard/commandes/${orderId}`,
-          })),
-        });
-      }
-    }
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, step: updated });
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Erreur mise à jour workflow" },
+      { status: 500 }
+    );
   }
 }

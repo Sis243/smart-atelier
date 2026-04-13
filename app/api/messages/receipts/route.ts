@@ -1,36 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireUser, requirePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { requirePermission, requireUser } from "@/lib/guards";
 
 export async function PATCH(req: NextRequest) {
+  const authGuard = await requireUser();
+  if (!authGuard.ok) return authGuard.response;
+
+  const permGuard = await requirePermission("chat.view");
+  if (!permGuard.ok) return permGuard.response;
+
   try {
-    const user = await requireUser(req);
-    await requirePermission(user.id, "CHAT_VIEW");
-
+    const userId = authGuard.auth.userId;
     const body = await req.json();
-    const messageId = body?.messageId;
-    const action = body?.action; // "DELIVERED" | "READ"
-    if (!messageId || !action) return NextResponse.json({ error: "messageId + action required" }, { status: 400 });
 
-    const receipt = await prisma.messageReceipt.update({
-      where: { messageId_userId: { messageId, userId: user.id } },
-      data: action === "READ" ? { readAt: new Date(), deliveredAt: new Date() } : { deliveredAt: new Date() },
+    const messageIds = Array.isArray(body?.messageIds)
+      ? body.messageIds.map((x: unknown) => String(x)).filter(Boolean)
+      : [];
+
+    if (messageIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Aucun message sélectionné" },
+        { status: 400 }
+      );
+    }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        id: { in: messageIds },
+        conversation: {
+          members: {
+            some: { userId },
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
     });
 
-    // Update message status if all read
-    const allReceipts = await prisma.messageReceipt.findMany({ where: { messageId } });
-    const allRead = allReceipts.length > 0 && allReceipts.every((r) => r.readAt);
-    const allDelivered = allReceipts.length > 0 && allReceipts.every((r) => r.deliveredAt);
+    const validMessageIds = messages.map((m) => m.id);
 
-    await prisma.message.update({
-      where: { id: messageId },
-      data: { status: allRead ? "READ" : allDelivered ? "DELIVERED" : "SENT" },
+    if (validMessageIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Aucun message autorisé" },
+        { status: 404 }
+      );
+    }
+
+    await prisma.$transaction(
+      validMessageIds.map((messageId) =>
+        prisma.messageReceipt.upsert({
+          where: {
+            messageId_userId: {
+              messageId,
+              userId,
+            },
+          },
+          update: {
+            readAt: new Date(),
+            deliveredAt: new Date(),
+          },
+          create: {
+            messageId,
+            userId,
+            deliveredAt: new Date(),
+            readAt: new Date(),
+          },
+        })
+      )
+    );
+
+    return NextResponse.json({
+      ok: true,
+      updatedCount: validMessageIds.length,
     });
-
-    return NextResponse.json(receipt);
   } catch (e: any) {
-    const msg = String(e?.message || e);
-    const status = msg === "UNAUTHORIZED" ? 401 : msg === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Mise à jour des reçus impossible" },
+      { status: 500 }
+    );
   }
 }
