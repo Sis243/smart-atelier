@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
 
+type EntryLite = {
+  debit: number | null;
+  credit: number | null;
+};
+
+type AccountLite = {
+  code: string;
+  name: string;
+  type: string;
+  entries: EntryLite[];
+};
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -58,14 +70,14 @@ export async function GET(req: Request) {
     let totalCredit = 0;
     let totalBalance = 0;
 
-    accounts.forEach((account) => {
+    (accounts as AccountLite[]).forEach((account: AccountLite) => {
       const debit = account.entries.reduce(
-        (sum, entry) => sum + Number(entry.debit || 0),
+        (sum: number, entry: EntryLite) => sum + Number(entry.debit || 0),
         0
       );
 
       const credit = account.entries.reduce(
-        (sum, entry) => sum + Number(entry.credit || 0),
+        (sum: number, entry: EntryLite) => sum + Number(entry.credit || 0),
         0
       );
 
