@@ -15,7 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "reset:admin": "ts-node scripts/reset-admin.ts",
+    "reset:admin": "tsx scripts/reset-admin.ts",
     "seed": "ts-node prisma/seed.ts",
     "reset:pwd": "ts-node --transpile-only scripts/reset-password.ts"
   },
