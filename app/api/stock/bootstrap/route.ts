@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 const INITIAL_PRESETS = [
   { name: "Wax imprimé", category: "Tissu", unit: "m", minQuantity: 20, unitCost: 5.5 },
   { name: "Bazin riche", category: "Tissu", unit: "m", minQuantity: 10, unitCost: 12 },

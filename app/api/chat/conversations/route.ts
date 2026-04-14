@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { ConversationType } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 type SessionUser = {
   id?: string;
 };

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/guards";
 import { QUALITY_ROLES } from "@/lib/role-permissions";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const guard = await requireRole(QUALITY_ROLES);
   if (!guard.ok) return guard.response;

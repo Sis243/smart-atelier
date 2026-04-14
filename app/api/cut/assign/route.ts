@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { CutPriority, CutAssignmentStatus, StepStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 function toStr(v: unknown) {
   return String(v ?? "").trim();
 }

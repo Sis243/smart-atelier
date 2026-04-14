@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 function typeBadge(t: string) {
   const base = "px-2 py-1 text-[11px] rounded-full ring-1";
   if (t === "VIP") return `${base} bg-amber-500/15 text-amber-200 ring-amber-400/20`;

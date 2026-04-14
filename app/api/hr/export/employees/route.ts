@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 function esc(value: unknown) {
   const s = String(value ?? "");
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {

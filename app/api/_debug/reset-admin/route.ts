@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/guards";
 
+export const dynamic = "force-dynamic";
+
 export const runtime = "nodejs";
 
 export async function GET() {

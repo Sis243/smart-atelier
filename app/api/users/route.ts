@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
 import { UserRole } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },

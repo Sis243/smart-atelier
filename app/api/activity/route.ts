@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/guards";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const guard = await requireRole(["SUPERADMIN", "ADMIN", "MANAGER"]);
   if (!guard.ok) return guard.response;

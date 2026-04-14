@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export const runtime = "nodejs"; // IMPORTANT pour fs
 
 function guessTypeFromMime(mime: string) {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission, requireUser } from "@/lib/guards";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_: NextRequest) {
   const authGuard = await requireUser();
   if (!authGuard.ok) return authGuard.response;

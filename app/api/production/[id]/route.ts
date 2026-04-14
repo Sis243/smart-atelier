@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 type StepStatus = "EN_ATTENTE" | "EN_COURS" | "TERMINE" | "REJETE";
 
 function toStr(v: unknown) {

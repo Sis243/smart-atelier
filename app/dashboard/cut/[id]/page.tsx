@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import CutDetailClient from "./CutDetailClient";
 
+export const dynamic = "force-dynamic";
+
 function badgeStep(status: string) {
   const base = "px-2 py-1 text-[11px] rounded-full ring-1";
   if (status === "EN_ATTENTE") return `${base} bg-yellow-500/15 text-yellow-200 ring-yellow-400/20`;

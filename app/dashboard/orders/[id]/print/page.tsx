@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 function money(amount: number, currency: string) {
   return `${currency} ${Number(amount || 0).toLocaleString("fr-FR")}`;
 }

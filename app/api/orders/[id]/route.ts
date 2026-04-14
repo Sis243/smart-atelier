@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recalcOrderAmounts } from "@/lib/orders";
 
+export const dynamic = "force-dynamic";
+
 function cleanString(value: unknown) {
   const s = String(value ?? "").trim();
   return s.length ? s : null;

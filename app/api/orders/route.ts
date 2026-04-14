@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrderFileType } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 function toStr(v: unknown) {
   return String(v ?? "").trim();
 }

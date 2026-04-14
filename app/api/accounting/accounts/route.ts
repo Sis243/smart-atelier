@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const DEFAULT_ACCOUNTS = [
   { code: "101", name: "Capital", type: "CAPITAUX" },
   { code: "401", name: "Fournisseurs", type: "PASSIF" },

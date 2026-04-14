@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 type Currency = "USD" | "CDF";
 type PaymentMethod = "CASH" | "MOBILE_MONEY" | "BANK";
 

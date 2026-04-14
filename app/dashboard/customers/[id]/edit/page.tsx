@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import EditCustomerForm from "./EditCustomerForm";
 
+export const dynamic = "force-dynamic";
+
 export default async function EditCustomerPage({ params }: { params: { id: string } }) {
   const customer = await prisma.customer.findUnique({
     where: { id: params.id },

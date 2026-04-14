@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const LATE_DAYS = 7;
 
 function isLate(createdAt: Date, status: string) {

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 
+export const dynamic = "force-dynamic";
+
 function toStr(v: unknown) {
   return String(v ?? "").trim();
 }

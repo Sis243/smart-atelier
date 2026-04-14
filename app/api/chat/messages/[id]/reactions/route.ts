@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const ALLOWED_REACTIONS = new Set(["👍", "❤️", "✅", "🔥", "👏"]);
 
 function toStr(value: unknown) {

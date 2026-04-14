@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/guards";
 import { DELIVERY_ROLES } from "@/lib/role-permissions";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const guard = await requireRole(DELIVERY_ROLES);
   if (!guard.ok) return guard.response;

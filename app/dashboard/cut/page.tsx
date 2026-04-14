@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 const LATE_DAYS = 3; // coupe: exemple 3 jours
 
 type StepStatus = "EN_ATTENTE" | "EN_COURS" | "TERMINE" | "REJETE";
