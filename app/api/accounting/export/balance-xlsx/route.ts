@@ -7,13 +7,6 @@ type EntryLite = {
   credit: number | null;
 };
 
-type AccountLite = {
-  code: string;
-  name: string;
-  type: string;
-  entries: EntryLite[];
-};
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -70,7 +63,7 @@ export async function GET(req: Request) {
     let totalCredit = 0;
     let totalBalance = 0;
 
-    (accounts as AccountLite[]).forEach((account: AccountLite) => {
+    accounts.forEach((account: any) => {
       const debit = account.entries.reduce(
         (sum: number, entry: EntryLite) => sum + Number(entry.debit || 0),
         0
